@@ -1,0 +1,20 @@
+{
+  "name": "BuyWise Kuwait",
+  "short_name": "BuyWise",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0f17",
+  "theme_color": "#0b0f17",
+  "icons": [
+    {"src":"/icon.svg","sizes":"any","type":"image/svg+xml"}
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}
