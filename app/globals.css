@@ -30,4 +30,25 @@ textarea{min-height:140px;resize:vertical}
 .danger{color:var(--danger)}
 .ok{color:var(--ok)}
 .warn{color:var(--warn)}
+.comparison-shell{padding-top:18px}
+.comparison-header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.comparison-highlight{min-width:220px;padding:16px 18px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
+.comparison-price{font-size:clamp(1.35rem,3vw,2.1rem);font-weight:900;letter-spacing:-.04em}
+.comparison-meta{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 6px}
+.comparison-list{display:grid;gap:12px;margin-top:12px}
+.comparison-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:14px 16px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid var(--line)}
+.comparison-row.best{background:linear-gradient(135deg,rgba(134,239,172,.09),rgba(255,255,255,.03));border-color:rgba(134,239,172,.22)}
+.comparison-row-main{min-width:0}
+.comparison-row-price{text-align:right}
+.comparison-link{justify-self:end;white-space:nowrap}
+.row-head{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px}
+.badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;font-weight:700;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#dbeafe}
+.badge.live,.pill-live{border-color:rgba(134,239,172,.28);background:rgba(134,239,172,.12);color:#d8ffe4}
+.badge.estimated,.pill-estimated{border-color:rgba(253,230,138,.28);background:rgba(253,230,138,.12);color:#fff2c7}
+.badge.search,.pill-pending{border-color:rgba(148,163,184,.28);background:rgba(148,163,184,.1);color:#d8e1f0}
+.badge.pending{border-color:rgba(148,163,184,.28);background:rgba(148,163,184,.1);color:#d8e1f0}
+.badge.best,.savings-chip{border-color:rgba(134,239,172,.32);background:rgba(134,239,172,.14);color:#d8ffe4}
+.savings-chip{display:inline-flex;margin-left:8px;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.tiny{font-size:12px}
 @media (max-width:640px){.container{padding:16px}.header{align-items:flex-start;flex-direction:column}.hero h1{max-width:none}.card{padding:18px}}
+@media (max-width:760px){.comparison-row{grid-template-columns:1fr;align-items:flex-start}.comparison-row-price{text-align:left}.comparison-link{justify-self:start}}
