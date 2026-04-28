@@ -35,6 +35,7 @@ textarea{min-height:140px;resize:vertical}
 .comparison-highlight{min-width:220px;padding:16px 18px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
 .comparison-price{font-size:clamp(1.35rem,3vw,2.1rem);font-weight:900;letter-spacing:-.04em}
 .comparison-meta{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 6px}
+.chip-grid{display:flex;flex-wrap:wrap;gap:8px}
 .comparison-list{display:grid;gap:12px;margin-top:12px}
 .comparison-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:14px 16px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid var(--line)}
 .comparison-row.best{background:linear-gradient(135deg,rgba(134,239,172,.09),rgba(255,255,255,.03));border-color:rgba(134,239,172,.22)}
