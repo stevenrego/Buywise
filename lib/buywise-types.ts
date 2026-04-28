@@ -3,6 +3,14 @@ export type MarketScope = 'kuwait' | 'middle-east' | 'worldwide'
 
 export type ComparisonConfidence = 'live' | 'estimated' | 'search' | 'missing'
 
+export type SearchPlanSummary = {
+  canonicalName: string
+  productCategory: string
+  searchQueries: string[]
+  excludedTerms: string[]
+  notes: string[]
+}
+
 export type ComparisonOffer = {
   retailer: string
   price: number | null
@@ -42,6 +50,7 @@ export type AnalysisResult = {
   kuwaitNotes: string[]
   betterAlternatives: string[]
   comparison?: ComparisonSummary
+  searchPlan?: SearchPlanSummary
   demoMode?: boolean
   providerLabel?: string
   error?: string
