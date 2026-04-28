@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowRight, Bookmark, CircleAlert, Globe, Search, Share2, ShieldCheck, ShoppingBag, Sparkles, TrendingDown } from 'lucide-react'
 
-import type { AnalysisResult, ComparisonOffer, ComparisonSummary, MarketScope, SearchPlanSummary } from '../lib/buywise-types'
+import type { AnalysisResult, ClarificationSummary, ComparisonOffer, ComparisonSummary, MarketScope, SearchPlanSummary } from '../lib/buywise-types'
 
 type Props = {
   initialInput?: string
@@ -92,6 +92,35 @@ function SearchPlanCard({ searchPlan, marketLabel }: { searchPlan?: SearchPlanSu
           <span>Avoiding: {searchPlan.excludedTerms.slice(0, 3).join(', ')}</span>
         </div>
       ) : null}
+    </section>
+  )
+}
+
+function ClarificationCard({
+  clarification,
+  onPick
+}: {
+  clarification: ClarificationSummary
+  onPick: (value: string) => void
+}) {
+  return (
+    <section className="card clarification-shell" style={{ marginTop: 16 }}>
+      <div className="pill">
+        <ShieldCheck size={14} />
+        One quick detail
+      </div>
+      <h2 style={{ marginTop: 12, marginBottom: 8 }}>{clarification.question}</h2>
+      {clarification.reason ? <p className="muted">{clarification.reason}</p> : null}
+      <p className="muted" style={{ marginTop: 0 }}>
+        Pick the closest match and I’ll compare prices right away.
+      </p>
+      <div className="clarification-options">
+        {clarification.options.map(option => (
+          <button key={option} type="button" className="clarification-option" onClick={() => onPick(option)}>
+            {option}
+          </button>
+        ))}
+      </div>
     </section>
   )
 }
@@ -246,9 +275,11 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
 
         setAnalysis(data)
         setStatusMessage(
-          data.demoMode
-            ? 'Demo mode result shown because no live AI key is configured.'
-            : `Comparison completed for ${data.comparison?.marketLabel || 'Kuwait'} with ${data.providerLabel || 'AI'}.`
+          data.clarification
+            ? data.clarification.question
+            : data.demoMode
+              ? 'Demo mode result shown because no live AI key is configured.'
+              : `Comparison completed for ${data.comparison?.marketLabel || 'Kuwait'} with ${data.providerLabel || 'AI'}.`
         )
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Analysis failed'
@@ -370,9 +401,21 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
 
       {analysis ? (
         <>
-          <SearchPlanCard searchPlan={analysis.searchPlan} marketLabel={analysis.comparison?.marketLabel || scopeLabel} />
-          {analysis.comparison ? <ComparisonCard comparison={analysis.comparison} /> : null}
-          <section className="card result-footer" style={{ marginTop: 16 }}>
+          {analysis.clarification ? (
+            <ClarificationCard
+              clarification={analysis.clarification}
+              onPick={value => {
+                setInput(value)
+                void analyze(value, scope)
+              }}
+            />
+          ) : null}
+
+          {!analysis.clarification ? (
+            <>
+              <SearchPlanCard searchPlan={analysis.searchPlan} marketLabel={analysis.comparison?.marketLabel || scopeLabel} />
+              {analysis.comparison ? <ComparisonCard comparison={analysis.comparison} /> : null}
+              <section className="card result-footer" style={{ marginTop: 16 }}>
             <div className="result-footer-top">
               <div>
                 <div className="muted">Comparison status</div>
@@ -444,6 +487,8 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
               Save this item
             </button>
           </section>
+            </>
+          ) : null}
         </>
       ) : null}
     </main>
