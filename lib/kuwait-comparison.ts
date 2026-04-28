@@ -66,6 +66,28 @@ const RETAILER_POOLS: Record<MarketScope, { label: string; retailers: RetailerSo
   }
 }
 
+const PRICE_PATTERN = /(?:KD|KWD|د\.ك\.?)\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)|([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)\s*(?:KD|KWD|د\.ك\.?)/i
+
+const PRODUCT_ALIASES: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /\bps\s*5\s*pro\b/i, replacement: 'PlayStation 5 Pro' },
+  { pattern: /\bps\s*5\b/i, replacement: 'PlayStation 5' },
+  { pattern: /\bplaystation\s*5\b/i, replacement: 'PlayStation 5' },
+  { pattern: /\biphone\s*16\s*pro\s*max\b/i, replacement: 'iPhone 16 Pro Max' },
+  { pattern: /\biphone\s*16\s*pro\b/i, replacement: 'iPhone 16 Pro' },
+  { pattern: /\biphone\s*16\b/i, replacement: 'iPhone 16' },
+  { pattern: /\biphone\s*15\s*pro\s*max\b/i, replacement: 'iPhone 15 Pro Max' },
+  { pattern: /\biphone\s*15\s*pro\b/i, replacement: 'iPhone 15 Pro' },
+  { pattern: /\biphone\s*15\b/i, replacement: 'iPhone 15' },
+  { pattern: /\bairpods\s*pro\s*2\b/i, replacement: 'AirPods Pro 2' },
+  { pattern: /\bairpods\s*pro\b/i, replacement: 'AirPods Pro' },
+  { pattern: /\bxbox\s*series\s*x\b/i, replacement: 'Xbox Series X' },
+  { pattern: /\bxbox\s*series\s*s\b/i, replacement: 'Xbox Series S' },
+  { pattern: /\bsamsung\s*galaxy\s*s\s*24\s*ultra\b/i, replacement: 'Samsung Galaxy S24 Ultra' },
+  { pattern: /\bsamsung\s*galaxy\s*s\s*24\b/i, replacement: 'Samsung Galaxy S24' },
+  { pattern: /\bmacbook\s*air\s*m3\b/i, replacement: 'MacBook Air M3' },
+  { pattern: /\bmacbook\s*pro\s*m3\b/i, replacement: 'MacBook Pro M3' }
+]
+
 function normalizeScope(scope?: MarketScope) {
   return scope && scope in RETAILER_POOLS ? scope : 'kuwait'
 }
@@ -77,12 +99,6 @@ function getRetailerPool(scope?: MarketScope) {
     label: RETAILER_POOLS[normalized].label,
     retailers: RETAILER_POOLS[normalized].retailers
   }
-}
-
-const PRICE_PATTERN = /(?:KD|KWD|Ø¯\.Ùƒ\.?)\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)|([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)\s*(?:KD|KWD|Ø¯\.Ùƒ\.?)/i
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function decodeHtml(value: string) {
@@ -101,10 +117,7 @@ function stripHtml(value: string) {
 function parseKuwaitPrice(raw: string | number | null | undefined) {
   if (raw === null || raw === undefined) return null
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
-  const cleaned = raw
-    .replace(/[^\d.,-]/g, '')
-    .replace(/,/g, '')
-    .trim()
+  const cleaned = raw.replace(/[^\d.,-]/g, '').replace(/,/g, '').trim()
   if (!cleaned) return null
   const value = Number.parseFloat(cleaned)
   return Number.isFinite(value) ? value : null
@@ -114,9 +127,7 @@ function extractPriceFromText(text: string) {
   const prices = Array.from(text.matchAll(new RegExp(PRICE_PATTERN, 'gi')))
     .map(match => parseKuwaitPrice(match[1] || match[2]))
     .filter((value): value is number => typeof value === 'number' && value > 0)
-
-  if (prices.length === 0) return null
-  return Math.min(...prices)
+  return prices.length ? Math.min(...prices) : null
 }
 
 function hostFromUrl(value: string) {
@@ -138,43 +149,40 @@ function cleanSearchText(value: string) {
     .trim()
 }
 
-const PRODUCT_ALIAS_RULES: Array<{ pattern: RegExp; replacement: string }> = [
-  { pattern: /\bps\s*5\s*pro\b/i, replacement: 'PlayStation 5 Pro' },
-  { pattern: /\bps\s*5\b/i, replacement: 'PlayStation 5' },
-  { pattern: /\bplaystation\s*5\b/i, replacement: 'PlayStation 5' },
-  { pattern: /\biphone\s*16\s*pro\s*max\b/i, replacement: 'iPhone 16 Pro Max' },
-  { pattern: /\biphone\s*16\s*pro\b/i, replacement: 'iPhone 16 Pro' },
-  { pattern: /\biphone\s*16\b/i, replacement: 'iPhone 16' },
-  { pattern: /\biphone\s*15\s*pro\s*max\b/i, replacement: 'iPhone 15 Pro Max' },
-  { pattern: /\biphone\s*15\s*pro\b/i, replacement: 'iPhone 15 Pro' },
-  { pattern: /\biphone\s*15\b/i, replacement: 'iPhone 15' },
-  { pattern: /\bairpods\s*pro\s*2\b/i, replacement: 'AirPods Pro 2' },
-  { pattern: /\bairpods\s*pro\b/i, replacement: 'AirPods Pro' },
-  { pattern: /\bxbox\s*series\s*x\b/i, replacement: 'Xbox Series X' },
-  { pattern: /\bxbox\s*series\s*s\b/i, replacement: 'Xbox Series S' },
-  { pattern: /\bsamsung\s*galaxy\s*s\s*24\b/i, replacement: 'Samsung Galaxy S24' },
-  { pattern: /\bsamsung\s*galaxy\s*s\s*24\s*ultra\b/i, replacement: 'Samsung Galaxy S24 Ultra' },
-  { pattern: /\bsamsung\s*galaxy\s*z\s*fold\s*6\b/i, replacement: 'Samsung Galaxy Z Fold 6' },
-  { pattern: /\bsamsung\s*galaxy\s*z\s*flip\s*6\b/i, replacement: 'Samsung Galaxy Z Flip 6' },
-  { pattern: /\bmacbook\s*air\s*m3\b/i, replacement: 'MacBook Air M3' },
-  { pattern: /\bmacbook\s*pro\s*m3\b/i, replacement: 'MacBook Pro M3' }
-]
-
 function normalizeSearchFragment(value: string) {
   const cleaned = cleanSearchText(value)
   if (!cleaned) return ''
 
   let normalized = cleaned.replace(/\s+/g, ' ').trim()
   const lowered = normalized.toLowerCase()
-
-  for (const rule of PRODUCT_ALIAS_RULES) {
+  for (const rule of PRODUCT_ALIASES) {
     if (rule.pattern.test(lowered)) {
       normalized = rule.replacement
       break
     }
   }
-
   return normalized
+}
+
+function extractSearchQuery(input: string, sourceTitle?: string) {
+  const trimmed = input.trim()
+  if (!trimmed) return sourceTitle?.trim() || 'product'
+
+  try {
+    const url = new URL(trimmed)
+    const parts = [sourceTitle, url.pathname, url.searchParams.get('q'), url.searchParams.get('query')]
+      .filter(Boolean)
+      .map(part => cleanSearchText(String(part)))
+      .filter(Boolean)
+    if (parts.length) return parts.join(' ').replace(/\s+/g, ' ').trim()
+  } catch {
+    // Not a URL.
+  }
+
+  const cleanedInput = normalizeSearchFragment(trimmed)
+  const cleanedTitle = normalizeSearchFragment(sourceTitle || '')
+  if (cleanedTitle && cleanedTitle.length > cleanedInput.length) return cleanedTitle
+  return cleanedInput || cleanedTitle || sourceTitle?.trim() || 'product'
 }
 
 type SearchVariant = {
@@ -201,80 +209,27 @@ function buildSearchVariants(input: string, sourceTitle?: string, preferredQueri
   add(baseQuery, 'base query')
   add(normalizedTitle, 'source title')
 
-  for (const preferred of preferredQueries) {
-    add(preferred, 'ai plan')
-  }
+  for (const preferred of preferredQueries) add(preferred, 'ai plan')
 
-  const productHints: Array<{ pattern: RegExp; variants: string[] }> = [
-    {
-      pattern: /\bps\s*5\b|\bplaystation\s*5\b/i,
-      variants: [
-        'Sony PlayStation 5 console',
-        'PlayStation 5 console',
-        'PS5 console',
-        'PlayStation 5',
-        'Sony PS5'
-      ]
-    },
-    {
-      pattern: /\bxbox\s*series\s*x\b/i,
-      variants: ['Microsoft Xbox Series X console', 'Xbox Series X console', 'Xbox Series X']
-    },
-    {
-      pattern: /\bxbox\s*series\s*s\b/i,
-      variants: ['Microsoft Xbox Series S console', 'Xbox Series S console', 'Xbox Series S']
-    },
-    {
-      pattern: /\biphone\s*16\s*pro\s*max\b/i,
-      variants: ['Apple iPhone 16 Pro Max', 'iPhone 16 Pro Max', 'iPhone 16 Pro Max phone']
-    },
-    {
-      pattern: /\biphone\s*16\s*pro\b/i,
-      variants: ['Apple iPhone 16 Pro', 'iPhone 16 Pro', 'iPhone 16 Pro phone']
-    },
-    {
-      pattern: /\biphone\s*16\b/i,
-      variants: ['Apple iPhone 16', 'iPhone 16', 'iPhone 16 phone']
-    },
-    {
-      pattern: /\biphone\s*15\s*pro\s*max\b/i,
-      variants: ['Apple iPhone 15 Pro Max', 'iPhone 15 Pro Max', 'iPhone 15 Pro Max phone']
-    },
-    {
-      pattern: /\biphone\s*15\s*pro\b/i,
-      variants: ['Apple iPhone 15 Pro', 'iPhone 15 Pro', 'iPhone 15 Pro phone']
-    },
-    {
-      pattern: /\biphone\s*15\b/i,
-      variants: ['Apple iPhone 15', 'iPhone 15', 'iPhone 15 phone']
-    },
-    {
-      pattern: /\bairpods\s*pro\s*2\b/i,
-      variants: ['Apple AirPods Pro 2', 'AirPods Pro 2', 'AirPods Pro 2nd generation']
-    },
-    {
-      pattern: /\bairpods\s*pro\b/i,
-      variants: ['Apple AirPods Pro', 'AirPods Pro']
-    },
-    {
-      pattern: /\bsamsung\s*galaxy\s*s\s*24\s*ultra\b/i,
-      variants: ['Samsung Galaxy S24 Ultra', 'Galaxy S24 Ultra', 'Samsung S24 Ultra']
-    },
-    {
-      pattern: /\bsamsung\s*galaxy\s*s\s*24\b/i,
-      variants: ['Samsung Galaxy S24', 'Galaxy S24', 'Samsung S24']
-    },
-    {
-      pattern: /\bmacbook\s*air\s*m3\b/i,
-      variants: ['Apple MacBook Air M3', 'MacBook Air M3', 'MacBook Air M3 laptop']
-    },
-    {
-      pattern: /\bmacbook\s*pro\s*m3\b/i,
-      variants: ['Apple MacBook Pro M3', 'MacBook Pro M3', 'MacBook Pro M3 laptop']
-    }
+  const hints: Array<{ pattern: RegExp; variants: string[] }> = [
+    { pattern: /\bps\s*5\b|\bplaystation\s*5\b/i, variants: ['Sony PlayStation 5 console', 'PS5 console', 'PlayStation 5 price Kuwait'] },
+    { pattern: /\bxbox\s*series\s*x\b/i, variants: ['Xbox Series X console', 'Xbox Series X price Kuwait'] },
+    { pattern: /\bxbox\s*series\s*s\b/i, variants: ['Xbox Series S console', 'Xbox Series S price Kuwait'] },
+    { pattern: /\biphone\s*16\s*pro\s*max\b/i, variants: ['Apple iPhone 16 Pro Max', 'iPhone 16 Pro Max price Kuwait'] },
+    { pattern: /\biphone\s*16\s*pro\b/i, variants: ['Apple iPhone 16 Pro', 'iPhone 16 Pro price Kuwait'] },
+    { pattern: /\biphone\s*16\b/i, variants: ['Apple iPhone 16', 'iPhone 16 price Kuwait'] },
+    { pattern: /\biphone\s*15\s*pro\s*max\b/i, variants: ['Apple iPhone 15 Pro Max', 'iPhone 15 Pro Max price Kuwait'] },
+    { pattern: /\biphone\s*15\s*pro\b/i, variants: ['Apple iPhone 15 Pro', 'iPhone 15 Pro price Kuwait'] },
+    { pattern: /\biphone\s*15\b/i, variants: ['Apple iPhone 15', 'iPhone 15 price Kuwait'] },
+    { pattern: /\bairpods\s*pro\s*2\b/i, variants: ['Apple AirPods Pro 2', 'AirPods Pro 2 price Kuwait'] },
+    { pattern: /\bairpods\s*pro\b/i, variants: ['Apple AirPods Pro', 'AirPods Pro price Kuwait'] },
+    { pattern: /\bsamsung\s*galaxy\s*s\s*24\s*ultra\b/i, variants: ['Samsung Galaxy S24 Ultra', 'Galaxy S24 Ultra price Kuwait'] },
+    { pattern: /\bsamsung\s*galaxy\s*s\s*24\b/i, variants: ['Samsung Galaxy S24', 'Galaxy S24 price Kuwait'] },
+    { pattern: /\bmacbook\s*air\s*m3\b/i, variants: ['Apple MacBook Air M3', 'MacBook Air M3 price Kuwait'] },
+    { pattern: /\bmacbook\s*pro\s*m3\b/i, variants: ['Apple MacBook Pro M3', 'MacBook Pro M3 price Kuwait'] }
   ]
 
-  for (const hint of productHints) {
+  for (const hint of hints) {
     if (hint.pattern.test(normalizedBase) || hint.pattern.test(normalizedTitle)) {
       for (const variant of hint.variants) add(variant, 'product hint')
     }
@@ -284,10 +239,7 @@ function buildSearchVariants(input: string, sourceTitle?: string, preferredQueri
     add(`${normalizedBase} gaming console`, 'console expansion')
   }
 
-  if (variants.length === 0) {
-    add(normalizedBase || normalizedTitle || baseQuery, 'fallback')
-  }
-
+  if (variants.length === 0) add(normalizedBase || normalizedTitle || baseQuery, 'fallback')
   return variants.slice(0, 6)
 }
 
@@ -298,14 +250,15 @@ function buildSearchTerms(retailer: RetailerSource, query: string, searchPlanQue
   for (const variant of variants) {
     const trimmed = normalizeSearchFragment(variant)
     if (!trimmed) continue
-    terms.add(`site:${retailer.domain} ${trimmed}`)
+    terms.add(trimmed)
+    terms.add(`${trimmed} Kuwait`)
     terms.add(`${retailer.label} ${trimmed}`)
     terms.add(`${trimmed} ${retailer.label}`)
-    terms.add(`${trimmed} Kuwait ${retailer.label}`)
-    terms.add(`${trimmed} price Kuwait ${retailer.label}`)
+    terms.add(`site:${retailer.domain} ${trimmed}`)
+    terms.add(`site:${retailer.domain} ${trimmed} price`)
   }
 
-  return Array.from(terms).slice(0, 10)
+  return Array.from(terms).slice(0, 12)
 }
 
 function tokenize(value: string) {
@@ -345,63 +298,30 @@ function scoreSearchResult(result: SearchResult, query: string, retailer: Retail
   return score
 }
 
-function extractSearchQuery(input: string, sourceTitle?: string) {
-  const trimmed = input.trim()
-  if (!trimmed) return sourceTitle?.trim() || 'product'
-
-  try {
-    const url = new URL(trimmed)
-    const parts = [sourceTitle, url.pathname, url.searchParams.get('q'), url.searchParams.get('query')]
-      .filter(Boolean)
-      .map(part => cleanSearchText(String(part)))
-      .filter(Boolean)
-    if (parts.length > 0) return parts.join(' ').replace(/\s+/g, ' ').trim()
-  } catch {
-    // Not a URL, fall through.
-  }
-
-  const cleanedInput = normalizeSearchFragment(trimmed)
-  const cleanedTitle = normalizeSearchFragment(sourceTitle || '')
-  const chosen = cleanedInput.length >= cleanedTitle.length ? cleanedInput : cleanedTitle
-
-  return chosen || cleanedTitle || cleanedInput || sourceTitle?.trim() || 'product'
-}
-
-function searchUrlFor(retailer: RetailerSource, query: string) {
-  return `https://www.bing.com/search?q=${encodeURIComponent(`site:${retailer.domain} ${query}`)}`
-}
-
-async function fetchTextWithTimeout(url: string, timeoutMs = 7000) {
+function fetchTextWithTimeout(url: string, timeoutMs = 7000) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'user-agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
-        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-      }
-    })
-    return response
-  } finally {
-    clearTimeout(timer)
-  }
+  return fetch(url, {
+    signal: controller.signal,
+    headers: {
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    }
+  }).finally(() => clearTimeout(timer))
 }
 
 function extractMetaContent(html: string, key: string, attr = 'property') {
-  const pattern = new RegExp(`<meta[^>]+${attr}=["']${escapeRegExp(key)}["'][^>]+content=["']([^"']+)["']`, 'i')
+  const pattern = new RegExp(`<meta[^>]+${attr}=["']${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]+content=["']([^"']+)["']`, 'i')
   return decodeHtml(html.match(pattern)?.[1] ?? '')
 }
 
 function extractTitle(html: string) {
   const ogTitle = extractMetaContent(html, 'og:title')
   if (ogTitle) return stripHtml(ogTitle)
-
   const twitterTitle = extractMetaContent(html, 'twitter:title', 'name')
   if (twitterTitle) return stripHtml(twitterTitle)
-
   const titleTag = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
   return titleTag ? stripHtml(titleTag) : ''
 }
@@ -489,9 +409,7 @@ async function fetchDuckDuckGoResults(query: string): Promise<SearchResult[]> {
       try {
         const parsed = new URL(url)
         const redirectTarget = parsed.searchParams.get('uddg')
-        if (redirectTarget) {
-          url = decodeURIComponent(redirectTarget)
-        }
+        if (redirectTarget) url = decodeURIComponent(redirectTarget)
       } catch {
         // Keep fallback url string.
       }
@@ -506,26 +424,76 @@ async function fetchDuckDuckGoResults(query: string): Promise<SearchResult[]> {
   }
 }
 
+async function fetchBingResults(query: string): Promise<SearchResult[]> {
+  try {
+    const response = await fetchTextWithTimeout(`https://www.bing.com/search?q=${encodeURIComponent(query)}`, 6000)
+    if (!response.ok) return []
+
+    const html = await response.text()
+    const results: SearchResult[] = []
+    const regex = /<li[^>]+class="b_algo"[\s\S]*?<h2>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<div[^>]+class="b_caption"[\s\S]*?<p>([\s\S]*?)<\/p>)?/gi
+
+    for (const match of Array.from(html.matchAll(regex))) {
+      const href = match[1]
+      const title = stripHtml(match[2] || '')
+      const snippet = stripHtml(match[3] || '')
+      if (!href || !title) continue
+
+      let url = decodeHtml(href)
+      try {
+        const parsed = new URL(url)
+        const redirectTarget = parsed.searchParams.get('u') || parsed.searchParams.get('uddg')
+        if (redirectTarget) url = decodeURIComponent(redirectTarget)
+      } catch {
+        // Keep fallback url string.
+      }
+
+      results.push({ title, url, snippet })
+      if (results.length >= 6) break
+    }
+
+    return results
+  } catch {
+    return []
+  }
+}
+
+async function fetchSearchResults(query: string): Promise<SearchResult[]> {
+  const [duckDuckGo, bing] = await Promise.all([fetchDuckDuckGoResults(query), fetchBingResults(query)])
+  const merged = new Map<string, SearchResult>()
+
+  for (const result of [...duckDuckGo, ...bing]) {
+    const key = `${hostFromUrl(result.url)}|${result.title.toLowerCase()}|${result.url}`
+    if (!merged.has(key)) merged.set(key, result)
+  }
+
+  return Array.from(merged.values()).slice(0, 10)
+}
+
 function buildOfferNote(title: string, source: string, price: number | null) {
   if (price !== null) return `Found a live or near-live price from ${source}.`
   if (title) return `Matched the product on ${source}, but the page did not expose a price cleanly.`
   return `Could not track a clear price on ${source} yet.`
 }
 
-async function lookupRetailerOffer(query: string, retailer: RetailerSource, sourceTitle?: string, searchPlanQueries: string[] = []): Promise<ComparisonOffer> {
+async function lookupRetailerOffer(
+  query: string,
+  retailer: RetailerSource,
+  sourceTitle?: string,
+  searchPlanQueries: string[] = []
+): Promise<ComparisonOffer> {
   const variants = buildSearchVariants(query, sourceTitle, searchPlanQueries)
   const primaryQuery = variants[0]?.query || query
-  const searchUrl = searchUrlFor(retailer, primaryQuery)
-  const candidateResults: Array<{ result: SearchResult; query: string; score: number }> = []
+  const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:${retailer.domain} ${primaryQuery}`)}`
+  const candidateResults: Array<{ result: SearchResult; score: number }> = []
 
   for (const variant of variants) {
     for (const searchTerm of buildSearchTerms(retailer, variant.query, searchPlanQueries)) {
-      const searchResults = await fetchDuckDuckGoResults(searchTerm)
+      const searchResults = await fetchSearchResults(searchTerm)
       for (const result of searchResults) {
         if (!hostFromUrl(result.url).includes(retailer.domain)) continue
         candidateResults.push({
           result,
-          query: searchTerm,
           score: scoreSearchResult(result, variant.query, retailer)
         })
       }
@@ -572,7 +540,7 @@ function buildFallbackOffers(query: string, scope?: MarketScope): ComparisonOffe
     retailer: retailer.retailer,
     price: null,
     currency: 'KD',
-    searchUrl: searchUrlFor(retailer, query),
+    searchUrl: `https://www.bing.com/search?q=${encodeURIComponent(`site:${retailer.domain} ${query}`)}`,
     source: retailer.label,
     confidence: 'missing',
     note: `Search ${retailer.label} for this product.`,
@@ -595,15 +563,14 @@ function applyComparisonRanking(offers: ComparisonOffer[], sourcePrice: number |
   const rankedOffers = offers.map(offer => ({
     ...offer,
     isCheapest: cheapestOffer.url ? offer.url === cheapestOffer.url : offer.retailer === cheapestOffer.retailer,
-    savingsFromSource:
-      typeof sourcePrice === 'number' && offer.price !== null ? Math.max(0, sourcePrice - offer.price) : null
+    savingsFromSource: typeof sourcePrice === 'number' && offer.price !== null ? Math.max(0, sourcePrice - offer.price) : null
   }))
 
   return { offers: rankedOffers, cheapestOffer, savings }
 }
 
 function marketFallbackMessage(scopeLabel: string) {
-  return `Couldn't track this one down yet in ${scopeLabel}. Try a cleaner product page or a direct model name.`
+  return `Couldn't verify a public match yet in ${scopeLabel}. Try a direct model name, a cleaner product page, or widen the market scope.`
 }
 
 export async function buildComparison(
@@ -618,8 +585,7 @@ export async function buildComparison(
   const pool = getRetailerPool(scope)
   const sourceUrl = (() => {
     try {
-      const parsed = new URL(trimmed)
-      return parsed.toString()
+      return new URL(trimmed).toString()
     } catch {
       return undefined
     }
@@ -632,6 +598,7 @@ export async function buildComparison(
   const retailerOffers = await Promise.allSettled(
     pool.retailers.map(retailer => lookupRetailerOffer(query, retailer, sourceProductName, preferredQueries))
   )
+
   const offers = retailerOffers.map((result, index) => {
     if (result.status === 'fulfilled') return result.value
     const retailer = pool.retailers[index]
@@ -639,7 +606,7 @@ export async function buildComparison(
       retailer: retailer.retailer,
       price: null,
       currency: 'KD' as const,
-      searchUrl: searchUrlFor(retailer, query),
+      searchUrl: `https://www.bing.com/search?q=${encodeURIComponent(`site:${retailer.domain} ${query}`)}`,
       source: retailer.label,
       confidence: 'missing' as const,
       note: `Search ${retailer.label} for this product.`,
@@ -655,7 +622,7 @@ export async function buildComparison(
             price: sourcePrice,
             currency: 'KD' as const,
             url: sourceUrl,
-            searchUrl: sourceUrl || searchUrlFor(pool.retailers[0], query),
+            searchUrl: sourceUrl || `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
             source: sourceData.source || sourceProductName,
             confidence: 'live' as const,
             note: 'Price detected from the shared product page.',
@@ -669,9 +636,7 @@ export async function buildComparison(
   const { offers: rankedOffers, cheapestOffer, savings } = applyComparisonRanking(withSourceOffer, sourcePrice)
   const liveCount = rankedOffers.filter(offer => offer.confidence === 'live' && typeof offer.price === 'number').length
   const estimatedCount = rankedOffers.filter(offer => offer.confidence === 'estimated' && typeof offer.price === 'number').length
-
-  const trackingStatus: ComparisonSummary['trackingStatus'] =
-    liveCount > 0 ? 'live' : estimatedCount > 0 ? 'estimated' : 'missing'
+  const trackingStatus: ComparisonSummary['trackingStatus'] = liveCount > 0 ? 'live' : estimatedCount > 0 ? 'estimated' : 'missing'
 
   const fallbackMessage =
     trackingStatus === 'missing'
