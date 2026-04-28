@@ -66,6 +66,19 @@ const RETAILER_POOLS: Record<MarketScope, { label: string; retailers: RetailerSo
   }
 }
 
+function normalizeScope(scope?: MarketScope) {
+  return scope && scope in RETAILER_POOLS ? scope : 'kuwait'
+}
+
+function getRetailerPool(scope?: MarketScope) {
+  const normalized = normalizeScope(scope)
+  return {
+    scope: normalized,
+    label: RETAILER_POOLS[normalized].label,
+    retailers: RETAILER_POOLS[normalized].retailers
+  }
+}
+
 const PRICE_PATTERN = /(?:KD|KWD|Ø¯\.Ùƒ\.?)\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)|([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)\s*(?:KD|KWD|Ø¯\.Ùƒ\.?)/i
 
 function escapeRegExp(value: string) {
@@ -125,6 +138,224 @@ function cleanSearchText(value: string) {
     .trim()
 }
 
+const PRODUCT_ALIAS_RULES: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /\bps\s*5\s*pro\b/i, replacement: 'PlayStation 5 Pro' },
+  { pattern: /\bps\s*5\b/i, replacement: 'PlayStation 5' },
+  { pattern: /\bplaystation\s*5\b/i, replacement: 'PlayStation 5' },
+  { pattern: /\biphone\s*16\s*pro\s*max\b/i, replacement: 'iPhone 16 Pro Max' },
+  { pattern: /\biphone\s*16\s*pro\b/i, replacement: 'iPhone 16 Pro' },
+  { pattern: /\biphone\s*16\b/i, replacement: 'iPhone 16' },
+  { pattern: /\biphone\s*15\s*pro\s*max\b/i, replacement: 'iPhone 15 Pro Max' },
+  { pattern: /\biphone\s*15\s*pro\b/i, replacement: 'iPhone 15 Pro' },
+  { pattern: /\biphone\s*15\b/i, replacement: 'iPhone 15' },
+  { pattern: /\bairpods\s*pro\s*2\b/i, replacement: 'AirPods Pro 2' },
+  { pattern: /\bairpods\s*pro\b/i, replacement: 'AirPods Pro' },
+  { pattern: /\bxbox\s*series\s*x\b/i, replacement: 'Xbox Series X' },
+  { pattern: /\bxbox\s*series\s*s\b/i, replacement: 'Xbox Series S' },
+  { pattern: /\bsamsung\s*galaxy\s*s\s*24\b/i, replacement: 'Samsung Galaxy S24' },
+  { pattern: /\bsamsung\s*galaxy\s*s\s*24\s*ultra\b/i, replacement: 'Samsung Galaxy S24 Ultra' },
+  { pattern: /\bsamsung\s*galaxy\s*z\s*fold\s*6\b/i, replacement: 'Samsung Galaxy Z Fold 6' },
+  { pattern: /\bsamsung\s*galaxy\s*z\s*flip\s*6\b/i, replacement: 'Samsung Galaxy Z Flip 6' },
+  { pattern: /\bmacbook\s*air\s*m3\b/i, replacement: 'MacBook Air M3' },
+  { pattern: /\bmacbook\s*pro\s*m3\b/i, replacement: 'MacBook Pro M3' }
+]
+
+function normalizeSearchFragment(value: string) {
+  const cleaned = cleanSearchText(value)
+  if (!cleaned) return ''
+
+  let normalized = cleaned.replace(/\s+/g, ' ').trim()
+  const lowered = normalized.toLowerCase()
+
+  for (const rule of PRODUCT_ALIAS_RULES) {
+    if (rule.pattern.test(lowered)) {
+      normalized = rule.replacement
+      break
+    }
+  }
+
+  return normalized
+}
+
+type SearchVariant = {
+  query: string
+  label: string
+}
+
+function buildSearchVariants(input: string, sourceTitle?: string): SearchVariant[] {
+  const baseQuery = extractSearchQuery(input, sourceTitle)
+  const normalizedBase = normalizeSearchFragment(baseQuery)
+  const normalizedTitle = normalizeSearchFragment(sourceTitle || '')
+  const variants: SearchVariant[] = []
+  const seen = new Set<string>()
+
+  function add(query: string, label: string) {
+    const clean = normalizeSearchFragment(query)
+    if (!clean) return
+    const key = clean.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    variants.push({ query: clean, label })
+  }
+
+  add(baseQuery, 'base query')
+  add(normalizedTitle, 'source title')
+
+  const productHints: Array<{ pattern: RegExp; variants: string[] }> = [
+    {
+      pattern: /\bps\s*5\b|\bplaystation\s*5\b/i,
+      variants: [
+        'Sony PlayStation 5 console',
+        'PlayStation 5 console',
+        'PS5 console',
+        'PlayStation 5',
+        'Sony PS5'
+      ]
+    },
+    {
+      pattern: /\bxbox\s*series\s*x\b/i,
+      variants: ['Microsoft Xbox Series X console', 'Xbox Series X console', 'Xbox Series X']
+    },
+    {
+      pattern: /\bxbox\s*series\s*s\b/i,
+      variants: ['Microsoft Xbox Series S console', 'Xbox Series S console', 'Xbox Series S']
+    },
+    {
+      pattern: /\biphone\s*16\s*pro\s*max\b/i,
+      variants: ['Apple iPhone 16 Pro Max', 'iPhone 16 Pro Max', 'iPhone 16 Pro Max phone']
+    },
+    {
+      pattern: /\biphone\s*16\s*pro\b/i,
+      variants: ['Apple iPhone 16 Pro', 'iPhone 16 Pro', 'iPhone 16 Pro phone']
+    },
+    {
+      pattern: /\biphone\s*16\b/i,
+      variants: ['Apple iPhone 16', 'iPhone 16', 'iPhone 16 phone']
+    },
+    {
+      pattern: /\biphone\s*15\s*pro\s*max\b/i,
+      variants: ['Apple iPhone 15 Pro Max', 'iPhone 15 Pro Max', 'iPhone 15 Pro Max phone']
+    },
+    {
+      pattern: /\biphone\s*15\s*pro\b/i,
+      variants: ['Apple iPhone 15 Pro', 'iPhone 15 Pro', 'iPhone 15 Pro phone']
+    },
+    {
+      pattern: /\biphone\s*15\b/i,
+      variants: ['Apple iPhone 15', 'iPhone 15', 'iPhone 15 phone']
+    },
+    {
+      pattern: /\bairpods\s*pro\s*2\b/i,
+      variants: ['Apple AirPods Pro 2', 'AirPods Pro 2', 'AirPods Pro 2nd generation']
+    },
+    {
+      pattern: /\bairpods\s*pro\b/i,
+      variants: ['Apple AirPods Pro', 'AirPods Pro']
+    },
+    {
+      pattern: /\bsamsung\s*galaxy\s*s\s*24\s*ultra\b/i,
+      variants: ['Samsung Galaxy S24 Ultra', 'Galaxy S24 Ultra', 'Samsung S24 Ultra']
+    },
+    {
+      pattern: /\bsamsung\s*galaxy\s*s\s*24\b/i,
+      variants: ['Samsung Galaxy S24', 'Galaxy S24', 'Samsung S24']
+    },
+    {
+      pattern: /\bmacbook\s*air\s*m3\b/i,
+      variants: ['Apple MacBook Air M3', 'MacBook Air M3', 'MacBook Air M3 laptop']
+    },
+    {
+      pattern: /\bmacbook\s*pro\s*m3\b/i,
+      variants: ['Apple MacBook Pro M3', 'MacBook Pro M3', 'MacBook Pro M3 laptop']
+    }
+  ]
+
+  for (const hint of productHints) {
+    if (hint.pattern.test(normalizedBase) || hint.pattern.test(normalizedTitle)) {
+      for (const variant of hint.variants) add(variant, 'product hint')
+    }
+  }
+
+  if (/\bconsole\b/i.test(normalizedBase) || /\bconsole\b/i.test(normalizedTitle)) {
+    add(`${normalizedBase} gaming console`, 'console expansion')
+  }
+
+  if (variants.length === 0) {
+    add(normalizedBase || normalizedTitle || baseQuery, 'fallback')
+  }
+
+  return variants.slice(0, 6)
+}
+
+function tokenize(value: string) {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .map(token => token.trim())
+    .filter(Boolean)
+}
+
+function scoreSearchResult(result: SearchResult, query: string, retailer: RetailerSource) {
+  const haystack = `${result.title} ${result.snippet} ${result.url}`.toLowerCase()
+  const tokens = tokenize(query)
+  const titleTokens = tokenize(result.title)
+  let score = 0
+
+  for (const token of tokens) {
+    if (titleTokens.includes(token)) score += 5
+    else if (haystack.includes(token)) score += 2
+  }
+
+  if (result.title.toLowerCase().includes(query.toLowerCase())) score += 15
+  if (hostFromUrl(result.url).includes(retailer.domain)) score += 8
+  if (result.url.toLowerCase().includes('/products/')) score += 4
+
+  const accessoryPenaltyTerms = ['cover', 'remote', 'headset', 'controller', 'charging', 'camera', 'game', 'gift card', 'card', 'accessory', 'bundle']
+  if (/\bplaystation\s*5\b|\bps\s*5\b/i.test(query)) {
+    for (const penalty of accessoryPenaltyTerms) {
+      if (haystack.includes(penalty)) score -= 6
+    }
+  }
+
+  if (/\biphone\b/i.test(query) || /\bgalaxy\b/i.test(query) || /\bmacbook\b/i.test(query)) {
+    if (haystack.includes('case') || haystack.includes('cover') || haystack.includes('charger')) score -= 4
+  }
+
+  return score
+}
+
+function countTokens(value: string) {
+  return value.split(/\s+/).filter(Boolean).length
+}
+
+function isLikelyAlias(value: string) {
+  const tokenCount = countTokens(value)
+  return tokenCount <= 2 && value.length <= 8
+}
+
+function pickBetterQuery(inputCandidate: string, sourceCandidate: string) {
+  if (!inputCandidate) return sourceCandidate
+  if (!sourceCandidate) return inputCandidate
+  if (inputCandidate === sourceCandidate) return inputCandidate
+
+  const inputTokens = countTokens(inputCandidate)
+  const sourceTokens = countTokens(sourceCandidate)
+
+  if (isLikelyAlias(inputCandidate) && sourceCandidate.length >= inputCandidate.length + 4) {
+    return sourceCandidate
+  }
+
+  if (sourceTokens > inputTokens && sourceCandidate.length >= inputCandidate.length) {
+    return sourceCandidate
+  }
+
+  if (sourceCandidate.length >= inputCandidate.length * 1.4 && sourceTokens >= inputTokens + 1) {
+    return sourceCandidate
+  }
+
+  return inputCandidate
+}
+
 function extractSearchQuery(input: string, sourceTitle?: string) {
   const trimmed = input.trim()
   if (!trimmed) return sourceTitle?.trim() || 'product'
@@ -140,21 +371,15 @@ function extractSearchQuery(input: string, sourceTitle?: string) {
     // Not a URL, fall through.
   }
 
-  const cleaned = cleanSearchText(trimmed)
-  return cleaned || sourceTitle?.trim() || 'product'
+  const cleanedInput = normalizeSearchFragment(trimmed)
+  const cleanedTitle = normalizeSearchFragment(sourceTitle || '')
+  const chosen = pickBetterQuery(cleanedInput, cleanedTitle)
+
+  return chosen || cleanedTitle || cleanedInput || sourceTitle?.trim() || 'product'
 }
 
 function searchUrlFor(retailer: RetailerSource, query: string) {
   return `https://www.bing.com/search?q=${encodeURIComponent(`site:${retailer.domain} ${query}`)}`
-}
-
-function getRetailerPool(scope?: MarketScope) {
-  const normalized = scope && scope in RETAILER_POOLS ? scope : 'kuwait'
-  return {
-    scope: normalized,
-    label: RETAILER_POOLS[normalized].label,
-    retailers: RETAILER_POOLS[normalized].retailers
-  }
 }
 
 async function fetchTextWithTimeout(url: string, timeoutMs = 7000) {
@@ -298,11 +523,26 @@ function buildOfferNote(title: string, source: string, price: number | null) {
   return `Could not track a clear price on ${source} yet.`
 }
 
-async function lookupRetailerOffer(query: string, retailer: RetailerSource): Promise<ComparisonOffer> {
-  const searchUrl = searchUrlFor(retailer, query)
-  const searchResults = await fetchDuckDuckGoResults(`site:${retailer.domain} ${query}`)
-  const firstMatch =
-    searchResults.find(result => hostFromUrl(result.url).includes(retailer.domain)) || searchResults[0]
+async function lookupRetailerOffer(query: string, retailer: RetailerSource, sourceTitle?: string): Promise<ComparisonOffer> {
+  const variants = buildSearchVariants(query, sourceTitle)
+  const primaryQuery = variants[0]?.query || query
+  const searchUrl = searchUrlFor(retailer, primaryQuery)
+  const candidateResults: Array<{ result: SearchResult; query: string; score: number }> = []
+
+  for (const variant of variants) {
+    const searchResults = await fetchDuckDuckGoResults(`site:${retailer.domain} ${variant.query}`)
+    for (const result of searchResults) {
+      if (!hostFromUrl(result.url).includes(retailer.domain)) continue
+      candidateResults.push({
+        result,
+        query: variant.query,
+        score: scoreSearchResult(result, variant.query, retailer)
+      })
+    }
+    if (candidateResults.some(candidate => candidate.score >= 12)) break
+  }
+
+  const firstMatch = candidateResults.sort((a, b) => b.score - a.score)[0]?.result
 
   if (!firstMatch) {
     return {
@@ -377,6 +617,7 @@ function marketFallbackMessage(scopeLabel: string) {
 export async function buildComparison(input: string, sourceTitle?: string, scope: MarketScope = 'kuwait'): Promise<ComparisonSummary> {
   const trimmed = input.trim()
   const query = extractSearchQuery(trimmed, sourceTitle)
+  const variants = buildSearchVariants(trimmed, sourceTitle)
   const pool = getRetailerPool(scope)
   const sourceUrl = (() => {
     try {
@@ -389,9 +630,9 @@ export async function buildComparison(input: string, sourceTitle?: string, scope
 
   const sourceData = sourceUrl ? await fetchProductPageData(sourceUrl) : {}
   const sourcePrice = sourceData.price ?? extractPriceFromText(trimmed)
-  const sourceProductName = sourceData.title || sourceTitle || query
+  const sourceProductName = sourceData.title || sourceTitle || variants[0]?.query || query
 
-  const retailerOffers = await Promise.allSettled(pool.retailers.map(retailer => lookupRetailerOffer(query, retailer)))
+  const retailerOffers = await Promise.allSettled(pool.retailers.map(retailer => lookupRetailerOffer(query, retailer, sourceProductName)))
   const offers = retailerOffers.map((result, index) => {
     if (result.status === 'fulfilled') return result.value
     const retailer = pool.retailers[index]
@@ -435,7 +676,7 @@ export async function buildComparison(input: string, sourceTitle?: string, scope
 
   const fallbackMessage =
     trackingStatus === 'missing'
-      ? marketFallbackMessage(pool.label)
+      ? `${marketFallbackMessage(pool.label)} We tried ${variants.slice(0, 3).map(variant => variant.query).join(', ')}.`
       : sourcePrice === null
         ? `We found ${pool.label} store candidates, but the source page did not expose a clean price.`
         : undefined
