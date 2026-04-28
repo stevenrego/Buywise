@@ -79,12 +79,15 @@ function detectAmbiguousInput(input: string): ClarificationSummary | null {
   if (!clean) return null
   if (/^https?:\/\//i.test(input.trim())) return null
 
+  const hasStorage = /\b(64|128|256|512|1024)\s*(gb|gib|tb)\b/i.test(clean)
+  const hasPhoneFamily = /\biphone\b/i.test(clean) || /\bgalaxy\b/i.test(clean) || /\bpixel\b/i.test(clean) || /\boneplus\b/i.test(clean)
+
   const families: Array<{ pattern: RegExp; question: string; options: string[]; reason: string }> = [
     {
       pattern: /\biphone\b/i,
-      question: 'Which iPhone model do you mean?',
-      options: ['iPhone 15', 'iPhone 16', 'iPhone 16 Pro'],
-      reason: 'The model family is clear, but the exact version is not.'
+      question: 'Which iPhone model or storage size do you mean?',
+      options: ['iPhone 16 128GB', 'iPhone 16 Pro 256GB', 'iPhone 16 Pro Max 256GB'],
+      reason: 'The model family is clear, but the exact configuration is not.'
     },
     {
       pattern: /\bairpods\b/i,
@@ -117,6 +120,14 @@ function detectAmbiguousInput(input: string): ClarificationSummary | null {
       reason: 'Samsung covers many categories and the comparison needs a specific model.'
     }
   ]
+
+  if (hasPhoneFamily && !hasStorage) {
+    return buildClarification(
+      'Which exact model or storage size do you mean?',
+      ['iPhone 16 128GB', 'iPhone 16 Pro 256GB', 'iPhone 16 Pro Max 256GB'],
+      'The product family is clear, but the storage size is missing.'
+    )
+  }
 
   for (const family of families) {
     if (family.pattern.test(clean)) {
@@ -264,6 +275,8 @@ Rules:
 - searchQueries should contain 4 to 6 concise phrases, from most specific to broader.
 - Include the exact product name, a Kuwait price phrase, a store-friendly version, a broader family phrase, and at least one retailer-friendly phrase when useful.
 - For phones and electronics, include capacity or model-year variants if they are obvious from the input.
+- Never invent a storage size, color, or edition that the user did not provide.
+- If the input looks like a phone model without storage, ask for storage instead of assuming one.
 - excludedTerms should list obvious false matches to avoid.
 - notes should briefly explain the interpretation.
 - If clarification is needed, keep searchQueries empty and provide 3 to 5 concrete choices.
