@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildComparison, buildFallbackComparison } from '../../../lib/kuwait-comparison'
-import type { AnalysisResult, MarketScope, SearchPlanSummary } from '../../../lib/buywise-types'
+import type { AnalysisResult, ClarificationSummary, MarketScope, SearchPlanSummary } from '../../../lib/buywise-types'
 
 type Provider = 'openai' | 'deepseek'
 
@@ -35,6 +35,14 @@ function fallback(input: string, comparison = buildFallbackComparison(input), se
   }
 }
 
+function buildClarification(question: string, options: string[], reason?: string): ClarificationSummary {
+  return {
+    question,
+    options: options.slice(0, 5),
+    reason
+  }
+}
+
 function getProvider(): Provider {
   return process.env.DEFAULT_AI_PROVIDER?.toLowerCase() === 'deepseek' ? 'deepseek' : 'openai'
 }
@@ -56,10 +64,71 @@ function planSchema() {
       productCategory: { type: 'string' },
       searchQueries: { type: 'array', items: { type: 'string' } },
       excludedTerms: { type: 'array', items: { type: 'string' } },
-      notes: { type: 'array', items: { type: 'string' } }
+      notes: { type: 'array', items: { type: 'string' } },
+      needsClarification: { type: 'boolean' },
+      clarificationQuestion: { type: 'string' },
+      clarificationOptions: { type: 'array', items: { type: 'string' } },
+      clarificationReason: { type: 'string' }
     },
     required: ['canonicalName', 'productCategory', 'searchQueries', 'excludedTerms', 'notes']
   }
+}
+
+function detectAmbiguousInput(input: string): ClarificationSummary | null {
+  const clean = input.trim().toLowerCase()
+  if (!clean) return null
+  if (/^https?:\/\//i.test(input.trim())) return null
+
+  const families: Array<{ pattern: RegExp; question: string; options: string[]; reason: string }> = [
+    {
+      pattern: /\biphone\b/i,
+      question: 'Which iPhone model do you mean?',
+      options: ['iPhone 15', 'iPhone 16', 'iPhone 16 Pro'],
+      reason: 'The model family is clear, but the exact version is not.'
+    },
+    {
+      pattern: /\bairpods\b/i,
+      question: 'Which AirPods model do you mean?',
+      options: ['AirPods', 'AirPods Pro', 'AirPods Max'],
+      reason: 'AirPods covers several different products with very different prices.'
+    },
+    {
+      pattern: /\bmacbook\b/i,
+      question: 'Which MacBook model do you mean?',
+      options: ['MacBook Air', 'MacBook Air M3', 'MacBook Pro'],
+      reason: 'MacBook is too broad to compare reliably without the model family.'
+    },
+    {
+      pattern: /\bplaystation\b|\bps\s*5\b/i,
+      question: 'Which PlayStation model do you mean?',
+      options: ['PS5', 'PS5 Slim', 'PS5 Pro'],
+      reason: 'PlayStation has multiple console versions with different prices.'
+    },
+    {
+      pattern: /\bxbox\b/i,
+      question: 'Which Xbox model do you mean?',
+      options: ['Xbox Series S', 'Xbox Series X', 'Xbox console bundle'],
+      reason: 'Xbox has several consoles and bundles that should not be mixed together.'
+    },
+    {
+      pattern: /\bsamsung\b|\bgalaxy\b/i,
+      question: 'Which Samsung model do you mean?',
+      options: ['Galaxy S24', 'Galaxy S24 Ultra', 'Galaxy Z Fold'],
+      reason: 'Samsung covers many categories and the comparison needs a specific model.'
+    }
+  ]
+
+  for (const family of families) {
+    if (family.pattern.test(clean)) {
+      const tokenCount = clean.split(/\s+/).length
+      const hasSpecificModel = /\b\d{2}\b|\bpro\b|\bultra\b|\bmax\b|\bplus\b|\bslim\b|\bair\b|\bseries\b/i.test(clean)
+      if (tokenCount <= 2 && !hasSpecificModel) {
+        return buildClarification(family.question, family.options, family.reason)
+      }
+    }
+  }
+
+  return null
 }
 
 function analysisSchema() {
@@ -156,16 +225,25 @@ async function generateSearchPlan(input: string): Promise<SearchPlan> {
   const activeProvider = getAvailableProvider(getProvider())
 
   if (!activeProvider) {
+    const clarification = detectAmbiguousInput(clean)
     return {
       canonicalName: clean,
       productCategory: 'product',
-      searchQueries: [clean],
+      searchQueries: clarification ? [] : [clean],
       excludedTerms: [],
-      notes: ['Demo mode is active, so the app is using a basic fallback plan.']
+      notes: clarification
+        ? ['Demo mode is active, so the app is asking for one quick clarification before comparing prices.']
+        : ['Demo mode is active, so the app is using a basic fallback plan.'],
+      needsClarification: Boolean(clarification),
+      clarificationQuestion: clarification?.question,
+      clarificationOptions: clarification?.options,
+      clarificationReason: clarification?.reason
     }
   }
 
-  const prompt = `You are BuyWise Kuwait. Build a smart search plan from this input so a shopping comparison engine can find real product listings and compare prices.
+  const prompt = `You are BuyWise Kuwait. First decide whether the input is specific enough to compare prices safely.
+
+If it is too vague, ask one short clarification question and stop. If it is specific enough, build a smart search plan that a shopping comparison engine can use to find real product listings and compare prices.
 
 Input:
 ${clean}
@@ -176,6 +254,10 @@ Return ONLY valid JSON with these exact keys:
 - searchQueries: string[]
 - excludedTerms: string[]
 - notes: string[]
+- needsClarification: boolean
+- clarificationQuestion: string
+- clarificationOptions: string[]
+- clarificationReason: string
 
 Rules:
 - canonicalName should be the real product name, not the shorthand.
@@ -184,6 +266,7 @@ Rules:
 - For phones and electronics, include capacity or model-year variants if they are obvious from the input.
 - excludedTerms should list obvious false matches to avoid.
 - notes should briefly explain the interpretation.
+- If clarification is needed, keep searchQueries empty and provide 3 to 5 concrete choices.
 - Keep it practical for Kuwait-first shopping comparison.`
 
   const raw =
@@ -193,13 +276,26 @@ Rules:
 
   const plan = raw.payload as Partial<SearchPlan>
   const searchQueries = Array.isArray(plan.searchQueries) ? plan.searchQueries.filter(item => typeof item === 'string' && item.trim()) : []
+  const clarificationOptions = Array.isArray(plan.clarificationOptions)
+    ? plan.clarificationOptions.filter(item => typeof item === 'string' && item.trim())
+    : []
 
   return {
     canonicalName: typeof plan.canonicalName === 'string' && plan.canonicalName.trim() ? plan.canonicalName.trim() : clean,
     productCategory: typeof plan.productCategory === 'string' && plan.productCategory.trim() ? plan.productCategory.trim() : 'product',
     searchQueries: searchQueries.slice(0, 6),
     excludedTerms: Array.isArray(plan.excludedTerms) ? plan.excludedTerms.filter(item => typeof item === 'string' && item.trim()) : [],
-    notes: Array.isArray(plan.notes) ? plan.notes.filter(item => typeof item === 'string' && item.trim()) : []
+    notes: Array.isArray(plan.notes) ? plan.notes.filter(item => typeof item === 'string' && item.trim()) : [],
+    needsClarification: Boolean(plan.needsClarification) || Boolean(detectAmbiguousInput(clean)),
+    clarificationQuestion:
+      typeof plan.clarificationQuestion === 'string' && plan.clarificationQuestion.trim()
+        ? plan.clarificationQuestion.trim()
+        : detectAmbiguousInput(clean)?.question,
+    clarificationOptions: clarificationOptions.length ? clarificationOptions.slice(0, 5) : detectAmbiguousInput(clean)?.options,
+    clarificationReason:
+      typeof plan.clarificationReason === 'string' && plan.clarificationReason.trim()
+        ? plan.clarificationReason.trim()
+        : detectAmbiguousInput(clean)?.reason
   }
 }
 
@@ -242,6 +338,29 @@ export async function POST(req: NextRequest) {
     scope = normalizeScope(marketScope)
 
     plan = await generateSearchPlan(input)
+    const clarification =
+      plan.needsClarification && plan.clarificationQuestion
+        ? buildClarification(plan.clarificationQuestion, plan.clarificationOptions || [], plan.clarificationReason)
+        : null
+
+    if (clarification) {
+      return NextResponse.json({
+        verdict: 'WAIT',
+        score: 45,
+        productName: plan.canonicalName || input,
+        summary: clarification.question,
+        pros: [],
+        cons: [],
+        redFlags: [],
+        kuwaitNotes: [],
+        betterAlternatives: [],
+        clarification,
+        searchPlan: plan,
+        demoMode: !getAvailableProvider(getProvider()),
+        providerLabel: getAvailableProvider(getProvider()) ? getProvider() : 'demo mode'
+      })
+    }
+
     const comparison = await buildComparison(input, plan.canonicalName, scope, plan.searchQueries)
     const activeProvider = getAvailableProvider(getProvider())
 
@@ -260,6 +379,31 @@ export async function POST(req: NextRequest) {
     const comparison = buildFallbackComparison(requestInput, undefined, scope)
     const message = error instanceof Error ? error.message : 'Server error'
     const fallbackPlan = plan || (requestInput ? await generateSearchPlan(requestInput) : undefined)
+    if (!fallbackPlan) {
+      return NextResponse.json({ ...fallback(requestInput, comparison), error: message })
+    }
+    const clarification =
+      fallbackPlan?.needsClarification && fallbackPlan.clarificationQuestion
+        ? buildClarification(fallbackPlan.clarificationQuestion, fallbackPlan.clarificationOptions || [], fallbackPlan.clarificationReason)
+        : null
+    if (clarification) {
+      return NextResponse.json({
+        verdict: 'WAIT',
+        score: 45,
+        productName: fallbackPlan.canonicalName || requestInput || 'Shared product',
+        summary: clarification.question,
+        pros: [],
+        cons: [],
+        redFlags: [],
+        kuwaitNotes: [],
+        betterAlternatives: [],
+        clarification,
+        searchPlan: fallbackPlan,
+        error: message,
+        demoMode: !getAvailableProvider(getProvider()),
+        providerLabel: getAvailableProvider(getProvider()) ? getProvider() : 'demo mode'
+      })
+    }
     return NextResponse.json({ ...fallback(requestInput, comparison, fallbackPlan), error: message })
   }
 }
