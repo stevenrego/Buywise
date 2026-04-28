@@ -1,10 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowRight, Bookmark, CircleAlert, Globe, Search, Share2, ShieldCheck, ShoppingBag, Sparkles, TrendingDown } from 'lucide-react'
-import Link from 'next/link'
 
-import type { AnalysisResult, ComparisonOffer, ComparisonSummary, MarketScope } from '../lib/buywise-types'
+import type { AnalysisResult, ComparisonOffer, ComparisonSummary, MarketScope, SearchPlanSummary } from '../lib/buywise-types'
 
 type Props = {
   initialInput?: string
@@ -31,7 +31,7 @@ function saveItem(input: string, analysis: AnalysisResult) {
 }
 
 function formatPrice(value: number | null | undefined) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return 'Not found'
+  if (typeof value !== 'number' || Number.isNaN(value)) return 'Check store'
   return `${value.toFixed(3)} KD`
 }
 
@@ -54,6 +54,48 @@ function comparisonBadgeClass(value: ComparisonOffer['confidence']) {
   return 'badge pending'
 }
 
+function SearchPlanCard({ searchPlan, marketLabel }: { searchPlan?: SearchPlanSummary; marketLabel: string }) {
+  if (!searchPlan) return null
+
+  return (
+    <section className="card comparison-shell" style={{ marginTop: 16 }}>
+      <div className="pill">
+        <Sparkles size={14} />
+        What we understood
+      </div>
+      <div className="comparison-header" style={{ marginTop: 12 }}>
+        <div>
+          <h2 style={{ marginBottom: 8 }}>{searchPlan.canonicalName}</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {searchPlan.productCategory} | default market: {marketLabel}
+          </p>
+          {searchPlan.notes[0] ? <p className="muted">{searchPlan.notes[0]}</p> : null}
+        </div>
+        <div className="comparison-highlight">
+          <div className="muted">AI search plan</div>
+          <div className="comparison-price">{searchPlan.searchQueries.length}</div>
+          <div className="muted">queries generated</div>
+        </div>
+      </div>
+
+      <div className="chip-grid" style={{ marginTop: 12 }}>
+        {searchPlan.searchQueries.map(query => (
+          <span key={query} className="pill">
+            {query}
+          </span>
+        ))}
+      </div>
+
+      {searchPlan.excludedTerms.length ? (
+        <div className="notice comparison-notice" style={{ marginTop: 12 }}>
+          <ShieldCheck size={18} />
+          <span>Avoiding: {searchPlan.excludedTerms.slice(0, 3).join(', ')}</span>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
 function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
   const sortedOffers = [...comparison.offers].sort((a, b) => {
     if (a.isCheapest) return -1
@@ -62,6 +104,7 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
     if (typeof b.price !== 'number') return -1
     return a.price - b.price
   })
+
   const cheapest = comparison.cheapestOffer || sortedOffers.find(offer => offer.isCheapest) || null
 
   return (
@@ -69,7 +112,8 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
       <div className="comparison-header">
         <div>
           <div className="pill">
-            <TrendingDown size={14} /> Kuwait price comparison
+            <TrendingDown size={14} />
+            Compare in {comparison.marketLabel}
           </div>
           <h2 style={{ marginBottom: 8 }}>{comparison.sourceProductName || 'Tracked product'}</h2>
           <p className="muted" style={{ marginTop: 0 }}>
@@ -80,7 +124,7 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
           <div className="muted">Cheapest known option</div>
           <div className="comparison-price">{formatPrice(cheapest?.price)}</div>
           <div className="muted">
-            {cheapest ? cheapest.retailer : 'No public match yet'}
+            {cheapest ? cheapest.retailer : 'No verified public match yet'}
             {comparison.savings !== null && comparison.savings !== undefined && comparison.savings > 0 ? (
               <span className="savings-chip">Save {comparison.savings.toFixed(3)} KD</span>
             ) : null}
@@ -109,7 +153,7 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
             ? 'Live price found'
             : comparison.trackingStatus === 'estimated'
               ? 'Best-effort comparison'
-              : 'Still tracking'}
+              : 'Still comparing'}
         </span>
         {typeof comparison.sourcePrice === 'number' ? <span className="pill">Source price: {formatPrice(comparison.sourcePrice)}</span> : null}
       </div>
@@ -150,7 +194,7 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState('')
   const [statusMessage, setStatusMessage] = useState(
-    'Search or share a product, compare Kuwait prices by default, and switch to Middle East or worldwide when needed.'
+    'Search or share a product, compare Kuwait prices by default, and widen scope when needed.'
   )
   const autoRan = useRef(false)
 
@@ -298,6 +342,7 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
 
       {analysis ? (
         <>
+          <SearchPlanCard searchPlan={analysis.searchPlan} marketLabel={analysis.comparison?.marketLabel || scopeLabel} />
           {analysis.comparison ? <ComparisonCard comparison={analysis.comparison} /> : null}
 
           <section className="card" style={{ marginTop: 16 }}>
@@ -311,7 +356,7 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
                     ? 'Live match'
                     : analysis.comparison?.trackingStatus === 'estimated'
                       ? 'Best effort'
-                      : 'Still tracking'}
+                      : 'Still comparing'}
                 </div>
               </div>
               <div>
@@ -328,7 +373,7 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
                 <p className="muted">
                   {analysis.comparison?.cheapestOffer
                     ? `${analysis.comparison.cheapestOffer.retailer} at ${formatPrice(analysis.comparison.cheapestOffer.price)}`
-                    : 'No public match yet'}
+                    : 'No verified public match yet'}
                 </p>
               </div>
               <div>
@@ -351,27 +396,14 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
               </div>
             </div>
 
-            <details style={{ marginTop: 16 }}>
-              <summary className="muted" style={{ cursor: 'pointer' }}>
-                Show AI reasoning
-              </summary>
-              <div className="grid" style={{ marginTop: 16 }}>
-                <div>
-                  <h3>Quick take</h3>
-                  <p className="muted">{analysis.verdict} - Score {analysis.score}</p>
-                </div>
-                <div>
-                  <h3>AI summary</h3>
-                  <p className="muted">{analysis.summary}</p>
-                </div>
-              </div>
-            </details>
+            <div className="notice" style={{ marginTop: 16 }}>
+              <Sparkles size={18} />
+              <span>BuyWise now shows the product understanding and comparison first. The AI analysis stays behind the scenes.</span>
+            </div>
 
             <div className="notice" style={{ marginTop: 12 }}>
               <CircleAlert size={18} />
-              <span>
-                BuyWise is now centered on price comparison. The verdict is kept as a secondary signal, not the main output.
-              </span>
+              <span>BuyWise is centered on product understanding and comparison. The decision score is kept behind the scenes.</span>
             </div>
 
             <button className="btn" onClick={() => saveItem(input, analysis)}>
