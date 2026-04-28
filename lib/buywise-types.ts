@@ -1,4 +1,5 @@
 export type Verdict = 'BUY' | 'WAIT' | 'AVOID'
+export type MarketScope = 'kuwait' | 'middle-east' | 'worldwide'
 
 export type ComparisonConfidence = 'live' | 'estimated' | 'search' | 'missing'
 
@@ -17,6 +18,8 @@ export type ComparisonOffer = {
 }
 
 export type ComparisonSummary = {
+  marketScope: MarketScope
+  marketLabel: string
   query: string
   sourceProductName?: string
   sourcePrice?: number | null
