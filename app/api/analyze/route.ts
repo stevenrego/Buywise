@@ -184,8 +184,9 @@ Return ONLY valid JSON with these exact keys:
 
 Rules:
 - canonicalName should be the real product name, not the shorthand.
-- searchQueries should contain 3 to 6 concise phrases, from most specific to broader.
-- Include the exact product name, the broad product family, and a store-friendly version when useful.
+- searchQueries should contain 4 to 6 concise phrases, from most specific to broader.
+- Include the exact product name, a Kuwait price phrase, a store-friendly version, and a broader family phrase when useful.
+- For phones and electronics, include capacity or model-year variants if they are obvious from the input.
 - excludedTerms should list obvious false matches to avoid.
 - notes should briefly explain the interpretation.
 - Keep it practical for Kuwait-first shopping comparison.`
