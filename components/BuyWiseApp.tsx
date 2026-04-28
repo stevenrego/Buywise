@@ -31,7 +31,7 @@ function saveItem(input: string, analysis: AnalysisResult) {
 }
 
 function formatPrice(value: number | null | undefined) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return 'Check store'
+  if (typeof value !== 'number' || Number.isNaN(value)) return null
   return `${value.toFixed(3)} KD`
 }
 
@@ -106,6 +106,9 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
   })
 
   const cheapest = comparison.cheapestOffer || sortedOffers.find(offer => offer.isCheapest) || null
+  const pricedOffers = sortedOffers.filter(offer => typeof offer.price === 'number')
+  const visibleOffers = pricedOffers.length ? pricedOffers.slice(0, 3) : sortedOffers.slice(0, 3)
+  const remainingOffers = sortedOffers.slice(visibleOffers.length)
 
   return (
     <section className="card comparison-shell" style={{ marginTop: 16 }}>
@@ -122,9 +125,13 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
         </div>
         <div className="comparison-highlight">
           <div className="muted">Cheapest known option</div>
-          <div className="comparison-price">{formatPrice(cheapest?.price)}</div>
+          {formatPrice(cheapest?.price) ? (
+            <div className="comparison-price">{formatPrice(cheapest?.price)}</div>
+          ) : (
+            <div className="comparison-empty-price">No verified public match yet</div>
+          )}
           <div className="muted">
-            {cheapest ? cheapest.retailer : 'No verified public match yet'}
+            {cheapest?.retailer || 'We are still searching'}
             {comparison.savings !== null && comparison.savings !== undefined && comparison.savings > 0 ? (
               <span className="savings-chip">Save {comparison.savings.toFixed(3)} KD</span>
             ) : null}
@@ -159,13 +166,13 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
       </div>
 
       <div className="comparison-list">
-        {sortedOffers.map(offer => (
-          <article key={`${offer.retailer}-${offer.searchUrl}`} className={`comparison-row ${offer.isCheapest ? 'best' : ''}`}>
-            <div className="comparison-row-main">
+        {visibleOffers.map(offer => (
+          <article key={`${offer.retailer}-${offer.searchUrl}`} className={`offer-card ${offer.isCheapest ? 'best' : ''}`}>
+            <div className="offer-copy">
               <div className="row-head">
                 <strong>{offer.retailer}</strong>
                 <span className={comparisonBadgeClass(offer.confidence)}>{confidenceLabel(offer.confidence)}</span>
-                {offer.isCheapest ? <span className="badge best">Cheapest</span> : null}
+                {offer.isCheapest ? <span className="badge best">Best price</span> : null}
               </div>
               <div className="muted">{offer.note}</div>
               <div className="muted tiny">
@@ -173,16 +180,39 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
                 {offer.availability !== 'unknown' ? ` | ${offer.availability}` : ''}
               </div>
             </div>
-            <div className="comparison-row-price">
-              <div className="comparison-price">{formatPrice(offer.price)}</div>
+            <div className="offer-action">
+              {formatPrice(offer.price) ? (
+                <div className="comparison-price">{formatPrice(offer.price)}</div>
+              ) : (
+                <div className="comparison-empty-price compact">No public price yet</div>
+              )}
               {formatSavings(offer.savingsFromSource) ? <div className="muted tiny">Save {formatSavings(offer.savingsFromSource)} vs source</div> : null}
+              <a className="btn secondary comparison-link" href={offer.url || offer.searchUrl} target="_blank" rel="noreferrer">
+                {formatPrice(offer.price) ? 'Visit' : 'Search'} <ArrowRight size={14} />
+              </a>
             </div>
-            <a className="btn secondary comparison-link" href={offer.url || offer.searchUrl} target="_blank" rel="noreferrer">
-              Open <ArrowRight size={14} />
-            </a>
           </article>
         ))}
       </div>
+
+      {remainingOffers.length ? (
+        <details className="comparison-details" style={{ marginTop: 12 }}>
+          <summary className="muted" style={{ cursor: 'pointer' }}>
+            Show {remainingOffers.length} more stores checked
+          </summary>
+          <div className="comparison-mini-list">
+            {remainingOffers.map(offer => (
+              <article key={`${offer.retailer}-${offer.searchUrl}-mini`} className="comparison-mini-item">
+                <div>
+                  <strong>{offer.retailer}</strong>
+                  <div className="muted tiny">{offer.note}</div>
+                </div>
+                <div className="muted tiny">{formatPrice(offer.price) || 'Not verified yet'}</div>
+              </article>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </section>
   )
 }
@@ -193,9 +223,7 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
   const [loading, setLoading] = useState(false)
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState('')
-  const [statusMessage, setStatusMessage] = useState(
-    'Search or share a product, compare Kuwait prices by default, and widen scope when needed.'
-  )
+  const [statusMessage, setStatusMessage] = useState('Search or share a product, compare Kuwait prices by default, and widen scope when needed.')
   const autoRan = useRef(false)
 
   const analyze = useCallback(
@@ -344,13 +372,18 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
         <>
           <SearchPlanCard searchPlan={analysis.searchPlan} marketLabel={analysis.comparison?.marketLabel || scopeLabel} />
           {analysis.comparison ? <ComparisonCard comparison={analysis.comparison} /> : null}
-
-          <section className="card" style={{ marginTop: 16 }}>
-            <div className="row" style={{ justifyContent: 'space-between' }}>
+          <section className="card result-footer" style={{ marginTop: 16 }}>
+            <div className="result-footer-top">
               <div>
                 <div className="muted">Comparison status</div>
                 <div
-                  className={`score ${analysis.comparison?.trackingStatus === 'live' ? 'ok' : analysis.comparison?.trackingStatus === 'estimated' ? 'warn' : ''}`}
+                  className={`score ${
+                    analysis.comparison?.trackingStatus === 'live'
+                      ? 'ok'
+                      : analysis.comparison?.trackingStatus === 'estimated'
+                        ? 'warn'
+                        : ''
+                  }`}
                 >
                   {analysis.comparison?.trackingStatus === 'live'
                     ? 'Live match'
@@ -364,18 +397,8 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
                 <div className="score">{analysis.comparison?.savings ? `${analysis.comparison.savings.toFixed(3)} KD` : 'N/A'}</div>
               </div>
             </div>
-            <h2>{analysis.comparison?.sourceProductName || analysis.productName}</h2>
-            <p>{analysis.comparison?.fallbackMessage || analysis.summary}</p>
 
-            <div className="grid" style={{ marginTop: 16 }}>
-              <div>
-                <h3>Cheapest known option</h3>
-                <p className="muted">
-                  {analysis.comparison?.cheapestOffer
-                    ? `${analysis.comparison.cheapestOffer.retailer} at ${formatPrice(analysis.comparison.cheapestOffer.price)}`
-                    : 'No verified public match yet'}
-                </p>
-              </div>
+            <div className="result-footer-grid">
               <div>
                 <h3>Scope</h3>
                 <p className="muted">{analysis.comparison?.marketLabel || 'Kuwait'} by default, with wider scope available.</p>
@@ -396,10 +419,21 @@ export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 
               </div>
             </div>
 
-            <div className="notice" style={{ marginTop: 16 }}>
-              <Sparkles size={18} />
-              <span>BuyWise now shows the product understanding and comparison first. The AI analysis stays behind the scenes.</span>
-            </div>
+            <details style={{ marginTop: 16 }}>
+              <summary className="muted" style={{ cursor: 'pointer' }}>
+                Show search logic
+              </summary>
+              <div className="grid" style={{ marginTop: 16 }}>
+                <div>
+                  <h3>AI notes</h3>
+                  <p className="muted">{analysis.searchPlan?.notes?.[0] || 'The AI search plan is used to broaden product matching.'}</p>
+                </div>
+                <div>
+                  <h3>How we searched</h3>
+                  <p className="muted">{analysis.searchPlan?.searchQueries?.slice(0, 3).join(' | ') || 'Broader market queries across Kuwait stores.'}</p>
+                </div>
+              </div>
+            </details>
 
             <div className="notice" style={{ marginTop: 12 }}>
               <CircleAlert size={18} />
