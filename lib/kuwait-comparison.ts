@@ -1,4 +1,4 @@
-import type { ComparisonConfidence, ComparisonOffer, ComparisonSummary } from './buywise-types'
+import type { ComparisonConfidence, ComparisonOffer, ComparisonSummary, MarketScope } from './buywise-types'
 
 type RetailerSource = {
   retailer: string
@@ -19,16 +19,52 @@ type ProductPageData = {
   availability?: 'in stock' | 'out of stock' | 'unknown'
 }
 
-const RETAILERS: RetailerSource[] = [
-  { retailer: 'Xcite', domain: 'xcite.com', label: 'Xcite' },
-  { retailer: 'Eureka', domain: 'eureka.com.kw', label: 'Eureka' },
-  { retailer: 'Blink', domain: 'blink.com.kw', label: 'Blink' },
-  { retailer: 'Best Al Yousifi', domain: 'bestalyousifi.com', label: 'Best Al Yousifi' },
-  { retailer: 'Lulu Hypermarket', domain: 'luluhypermarket.com', label: 'Lulu Hypermarket' },
-  { retailer: 'Carrefour', domain: 'carrefourkuwait.com', label: 'Carrefour' },
-  { retailer: 'Namshi', domain: 'namshi.com', label: 'Namshi' },
-  { retailer: 'Boutiqaat', domain: 'boutiqaat.com', label: 'Boutiqaat' }
-]
+const RETAILER_POOLS: Record<MarketScope, { label: string; retailers: RetailerSource[] }> = {
+  kuwait: {
+    label: 'Kuwait',
+    retailers: [
+      { retailer: 'Xcite', domain: 'xcite.com', label: 'Xcite' },
+      { retailer: 'Eureka', domain: 'eureka.com.kw', label: 'Eureka' },
+      { retailer: 'Blink', domain: 'blink.com.kw', label: 'Blink' },
+      { retailer: 'Best Al Yousifi', domain: 'bestalyousifi.com', label: 'Best Al Yousifi' },
+      { retailer: 'Lulu Hypermarket', domain: 'luluhypermarket.com', label: 'Lulu Hypermarket' },
+      { retailer: 'Carrefour', domain: 'carrefourkuwait.com', label: 'Carrefour' },
+      { retailer: 'Namshi', domain: 'namshi.com', label: 'Namshi' },
+      { retailer: 'Boutiqaat', domain: 'boutiqaat.com', label: 'Boutiqaat' }
+    ]
+  },
+  'middle-east': {
+    label: 'Middle East',
+    retailers: [
+      { retailer: 'Xcite', domain: 'xcite.com', label: 'Xcite' },
+      { retailer: 'Eureka', domain: 'eureka.com.kw', label: 'Eureka' },
+      { retailer: 'Blink', domain: 'blink.com.kw', label: 'Blink' },
+      { retailer: 'Best Al Yousifi', domain: 'bestalyousifi.com', label: 'Best Al Yousifi' },
+      { retailer: 'Lulu Hypermarket', domain: 'luluhypermarket.com', label: 'Lulu Hypermarket' },
+      { retailer: 'Carrefour', domain: 'carrefourkuwait.com', label: 'Carrefour' },
+      { retailer: 'Carrefour UAE', domain: 'carrefouruae.com', label: 'Carrefour UAE' },
+      { retailer: 'Noon', domain: 'noon.com', label: 'Noon' },
+      { retailer: 'Amazon UAE', domain: 'amazon.ae', label: 'Amazon UAE' },
+      { retailer: 'Sharaf DG', domain: 'sharafdg.com', label: 'Sharaf DG' },
+      { retailer: 'Namshi', domain: 'namshi.com', label: 'Namshi' },
+      { retailer: 'Boutiqaat', domain: 'boutiqaat.com', label: 'Boutiqaat' }
+    ]
+  },
+  worldwide: {
+    label: 'Worldwide',
+    retailers: [
+      { retailer: 'Amazon', domain: 'amazon.com', label: 'Amazon' },
+      { retailer: 'Amazon UAE', domain: 'amazon.ae', label: 'Amazon UAE' },
+      { retailer: 'Walmart', domain: 'walmart.com', label: 'Walmart' },
+      { retailer: 'Best Buy', domain: 'bestbuy.com', label: 'Best Buy' },
+      { retailer: 'Target', domain: 'target.com', label: 'Target' },
+      { retailer: 'eBay', domain: 'ebay.com', label: 'eBay' },
+      { retailer: 'AliExpress', domain: 'aliexpress.com', label: 'AliExpress' },
+      { retailer: 'Noon', domain: 'noon.com', label: 'Noon' },
+      { retailer: 'Sharaf DG', domain: 'sharafdg.com', label: 'Sharaf DG' }
+    ]
+  }
+}
 
 const PRICE_PATTERN = /(?:KD|KWD|Ø¯\.Ùƒ\.?)\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)|([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)\s*(?:KD|KWD|Ø¯\.Ùƒ\.?)/i
 
@@ -110,6 +146,15 @@ function extractSearchQuery(input: string, sourceTitle?: string) {
 
 function searchUrlFor(retailer: RetailerSource, query: string) {
   return `https://www.bing.com/search?q=${encodeURIComponent(`site:${retailer.domain} ${query}`)}`
+}
+
+function getRetailerPool(scope?: MarketScope) {
+  const normalized = scope && scope in RETAILER_POOLS ? scope : 'kuwait'
+  return {
+    scope: normalized,
+    label: RETAILER_POOLS[normalized].label,
+    retailers: RETAILER_POOLS[normalized].retailers
+  }
 }
 
 async function fetchTextWithTimeout(url: string, timeoutMs = 7000) {
@@ -290,8 +335,8 @@ async function lookupRetailerOffer(query: string, retailer: RetailerSource): Pro
   }
 }
 
-function buildFallbackOffers(query: string): ComparisonOffer[] {
-  return RETAILERS.map(retailer => ({
+function buildFallbackOffers(query: string, scope?: MarketScope): ComparisonOffer[] {
+  return getRetailerPool(scope).retailers.map(retailer => ({
     retailer: retailer.retailer,
     price: null,
     currency: 'KD',
@@ -325,9 +370,14 @@ function applyComparisonRanking(offers: ComparisonOffer[], sourcePrice: number |
   return { offers: rankedOffers, cheapestOffer, savings }
 }
 
-export async function buildComparison(input: string, sourceTitle?: string): Promise<ComparisonSummary> {
+function marketFallbackMessage(scopeLabel: string) {
+  return `Couldn't track this one down yet in ${scopeLabel}. Try a cleaner product page or a direct model name.`
+}
+
+export async function buildComparison(input: string, sourceTitle?: string, scope: MarketScope = 'kuwait'): Promise<ComparisonSummary> {
   const trimmed = input.trim()
   const query = extractSearchQuery(trimmed, sourceTitle)
+  const pool = getRetailerPool(scope)
   const sourceUrl = (() => {
     try {
       const parsed = new URL(trimmed)
@@ -341,10 +391,10 @@ export async function buildComparison(input: string, sourceTitle?: string): Prom
   const sourcePrice = sourceData.price ?? extractPriceFromText(trimmed)
   const sourceProductName = sourceData.title || sourceTitle || query
 
-  const retailerOffers = await Promise.allSettled(RETAILERS.map(retailer => lookupRetailerOffer(query, retailer)))
+  const retailerOffers = await Promise.allSettled(pool.retailers.map(retailer => lookupRetailerOffer(query, retailer)))
   const offers = retailerOffers.map((result, index) => {
     if (result.status === 'fulfilled') return result.value
-    const retailer = RETAILERS[index]
+    const retailer = pool.retailers[index]
     return {
       retailer: retailer.retailer,
       price: null,
@@ -365,7 +415,7 @@ export async function buildComparison(input: string, sourceTitle?: string): Prom
             price: sourcePrice,
             currency: 'KD' as const,
             url: sourceUrl,
-            searchUrl: sourceUrl || searchUrlFor(RETAILERS[0], query),
+            searchUrl: sourceUrl || searchUrlFor(pool.retailers[0], query),
             source: sourceData.source || sourceProductName,
             confidence: 'live' as const,
             note: 'Price detected from the shared product page.',
@@ -385,12 +435,14 @@ export async function buildComparison(input: string, sourceTitle?: string): Prom
 
   const fallbackMessage =
     trackingStatus === 'missing'
-      ? "Couldn't track this one down yet. Try a cleaner product page or a direct model name."
+      ? marketFallbackMessage(pool.label)
       : sourcePrice === null
-        ? 'We found Kuwait store candidates, but the source page did not expose a clean price.'
+        ? `We found ${pool.label} store candidates, but the source page did not expose a clean price.`
         : undefined
 
   return {
+    marketScope: pool.scope,
+    marketLabel: pool.label,
     query,
     sourceProductName,
     sourcePrice,
@@ -403,17 +455,20 @@ export async function buildComparison(input: string, sourceTitle?: string): Prom
   }
 }
 
-export function buildFallbackComparison(input: string, sourceTitle?: string): ComparisonSummary {
+export function buildFallbackComparison(input: string, sourceTitle?: string, scope: MarketScope = 'kuwait'): ComparisonSummary {
   const query = extractSearchQuery(input, sourceTitle)
+  const pool = getRetailerPool(scope)
   return {
+    marketScope: pool.scope,
+    marketLabel: pool.label,
     query,
     sourceProductName: sourceTitle || query,
     sourcePrice: null,
     sourceUrl: undefined,
     trackingStatus: 'missing',
-    offers: buildFallbackOffers(query),
+    offers: buildFallbackOffers(query, scope),
     cheapestOffer: null,
     savings: null,
-    fallbackMessage: "Couldn't track this one down yet. Try a cleaner product page or a direct model name."
+    fallbackMessage: marketFallbackMessage(pool.label)
   }
 }
