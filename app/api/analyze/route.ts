@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { buildComparison, buildFallbackComparison } from '../../../lib/kuwait-comparison'
+import type { AnalysisResult } from '../../../lib/buywise-types'
 
 type Provider = 'openai' | 'deepseek'
 
 export const runtime = 'nodejs'
 
-function fallback(input: string) {
+function fallback(input: string, comparison = buildFallbackComparison(input)) : AnalysisResult {
   return {
     verdict: 'WAIT',
     score: 68,
     productName: input.slice(0, 80) || 'Shared product',
-    summary: 'Demo mode is active. Add an OpenAI or DeepSeek key to enable live product analysis. This placeholder keeps the full product review flow working.',
+    summary: 'Demo mode is active. Add an OpenAI or DeepSeek key to enable live product analysis. The comparison layer still tries to surface Kuwait retailers and likely cheaper options.',
     pros: ['Fast check flow', 'Works with shared links or product descriptions', 'Kuwait-specific decision format'],
-    cons: ['Live price comparison is not connected yet', 'Instagram video extraction needs a native app or approved scraping or API flow'],
+    cons: ['Live price comparison is still best-effort from public pages', 'Instagram video extraction needs a native app or approved scraping or API flow'],
     redFlags: ['Do not trust influencer claims without independent review data', 'Check warranty and return policy before buying'],
     kuwaitNotes: ['Compare with Xcite, Eureka, Blink, Best Al Yousifi, Lulu, Carrefour, and Amazon UAE where relevant', 'Check whether warranty is Kuwait-local or international only'],
     betterAlternatives: ['Compare across Kuwait retailers before buying', 'Wait for clearer pricing or verified seller information'],
+    comparison,
     demoMode: true,
     providerLabel: 'demo mode'
   }
@@ -140,24 +143,32 @@ async function callDeepSeek(prompt: string) {
 }
 
 export async function POST(req: NextRequest) {
+  let requestInput = ''
   try {
-    const { input } = await req.json()
+    const body = await req.json()
+    const { input } = body as { input?: unknown }
     if (!input || typeof input !== 'string') {
       return NextResponse.json({ error: 'Input is required' }, { status: 400 })
     }
+    requestInput = input
 
     const primaryProvider = getProvider()
     const activeProvider = getAvailableProvider(primaryProvider)
+    const comparisonPromise = buildComparison(input)
+
     if (!activeProvider) {
-      return NextResponse.json(fallback(input))
+      const comparison = await comparisonPromise
+      return NextResponse.json(fallback(input, comparison))
     }
 
     const prompt = buildPrompt(input)
-    const result = activeProvider === 'deepseek' ? await callDeepSeek(prompt) : await callOpenAI(prompt)
+    const resultPromise = activeProvider === 'deepseek' ? callDeepSeek(prompt) : callOpenAI(prompt)
+    const [result, comparison] = await Promise.all([resultPromise, comparisonPromise])
 
-    return NextResponse.json({ ...result.payload, demoMode: false, providerLabel: result.providerLabel })
+    return NextResponse.json({ ...result.payload, comparison, demoMode: false, providerLabel: result.providerLabel })
   } catch (error: unknown) {
+    const comparison = buildFallbackComparison(requestInput)
     const message = error instanceof Error ? error.message : 'Server error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ ...fallback(requestInput, comparison), error: message })
   }
 }
