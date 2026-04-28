@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildComparison, buildFallbackComparison } from '../../../lib/kuwait-comparison'
-import type { AnalysisResult } from '../../../lib/buywise-types'
+import type { AnalysisResult, MarketScope } from '../../../lib/buywise-types'
 
 type Provider = 'openai' | 'deepseek'
 
 export const runtime = 'nodejs'
+
+function normalizeScope(scope: unknown): MarketScope {
+  return scope === 'middle-east' || scope === 'worldwide' ? scope : 'kuwait'
+}
 
 function fallback(input: string, comparison = buildFallbackComparison(input)) : AnalysisResult {
   return {
@@ -144,17 +148,19 @@ async function callDeepSeek(prompt: string) {
 
 export async function POST(req: NextRequest) {
   let requestInput = ''
+  let scope: MarketScope = 'kuwait'
   try {
     const body = await req.json()
-    const { input } = body as { input?: unknown }
+    const { input, marketScope } = body as { input?: unknown; marketScope?: unknown }
     if (!input || typeof input !== 'string') {
       return NextResponse.json({ error: 'Input is required' }, { status: 400 })
     }
     requestInput = input
+    scope = normalizeScope(marketScope)
 
     const primaryProvider = getProvider()
     const activeProvider = getAvailableProvider(primaryProvider)
-    const comparisonPromise = buildComparison(input)
+    const comparisonPromise = buildComparison(input, undefined, scope)
 
     if (!activeProvider) {
       const comparison = await comparisonPromise
@@ -167,7 +173,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ...result.payload, comparison, demoMode: false, providerLabel: result.providerLabel })
   } catch (error: unknown) {
-    const comparison = buildFallbackComparison(requestInput)
+    const comparison = buildFallbackComparison(requestInput, undefined, scope)
     const message = error instanceof Error ? error.message : 'Server error'
     return NextResponse.json({ ...fallback(requestInput, comparison), error: message })
   }
