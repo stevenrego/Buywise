@@ -1,16 +1,17 @@
 # BuyWise Kuwait MVP
 
-BuyWise Kuwait is a Kuwait-focused AI shopping assistant. Users can paste or share a product link or description and get a simple `BUY`, `WAIT`, or `AVOID` verdict with reasons, pros, cons, red flags, alternatives, and a Kuwait price comparison panel.
+BuyWise Kuwait is a Kuwait-focused price comparison assistant. Users can search, paste, or share a product link or description and compare prices across Kuwait stores first, then expand the scope to the Middle East or worldwide. The app still shows a simple `BUY`, `WAIT`, or `AVOID` verdict as a secondary buying signal.
 
 ## Current MVP
 
 - Next.js App Router app with mobile-first UI
+- Search, paste, and share entry points
 - PWA share-target flow for Android Chrome
 - Saved items page using browser storage
 - AI provider support for OpenAI and DeepSeek
 - Demo mode when no API key is configured
 - Best-effort Kuwait retailer comparison against public product pages and search results
-- `/compare?q=<product-url>` Flash-style entry point for direct comparison mode
+- `/compare?q=<product-url>&market=kuwait|middle-east|worldwide` direct comparison mode
 - Vercel-ready deployment target
 
 ## Environment variables
@@ -31,6 +32,7 @@ Notes:
 - If the selected provider key is missing, the app automatically falls back to the other configured provider.
 - If no AI key is present, the app still works in demo mode.
 - Price comparison stays best-effort and public-page based so the app can still work without a private merchant API.
+- Kuwait is the default market scope. Users can switch to Middle East or worldwide in the UI or through the `/compare` route query params.
 
 ## Local development
 
@@ -59,13 +61,13 @@ npm run start
    - Optional: `OPENAI_MODEL`
    - Optional: `DEEPSEEK_MODEL`
 4. Deploy.
-5. Test both the home page and `/compare?q=<product-url>` route.
+5. Test the home page and `/compare?q=<product-url>&market=kuwait` route.
 6. After the first deployment, open the site on Android Chrome and install it to enable the share-target flow.
 
 ## Product scope guardrails
 
-- Keep the experience focused on shopping verdicts and buying confidence.
-- Keep the comparison experience focused on Kuwait retailer prices and the cheapest likely option.
+- Keep the experience focused on product search, sharing, and price comparison.
+- Keep Kuwait as the default market while supporting Middle East and worldwide scopes.
 - Do not add wallet, cashback, payment, loyalty, or CAF-related features.
 - Do not commit real secrets or `.env.local`.
 
