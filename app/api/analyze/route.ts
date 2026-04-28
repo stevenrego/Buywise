@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildComparison, buildFallbackComparison } from '../../../lib/kuwait-comparison'
-import type { AnalysisResult, MarketScope } from '../../../lib/buywise-types'
+import type { AnalysisResult, MarketScope, SearchPlanSummary } from '../../../lib/buywise-types'
 
 type Provider = 'openai' | 'deepseek'
 
 export const runtime = 'nodejs'
 
-type SearchPlan = {
-  canonicalName: string
-  productCategory: string
-  searchQueries: string[]
-  excludedTerms: string[]
-  notes: string[]
-}
+type SearchPlan = SearchPlanSummary
 
 function normalizeScope(scope: unknown): MarketScope {
   return scope === 'middle-east' || scope === 'worldwide' ? scope : 'kuwait'
@@ -22,19 +16,20 @@ function cleanInput(input: string) {
   return input.trim().replace(/\s+/g, ' ')
 }
 
-function fallback(input: string, comparison = buildFallbackComparison(input)): AnalysisResult {
+function fallback(input: string, comparison = buildFallbackComparison(input), searchPlan?: SearchPlan): AnalysisResult {
   return {
     verdict: 'WAIT',
     score: 68,
     productName: input.slice(0, 80) || 'Shared product',
     summary:
-      'Demo mode is active. Add an OpenAI or DeepSeek key to enable live product analysis. The comparison layer still tries to surface Kuwait retailers and likely cheaper options.',
-    pros: ['Fast check flow', 'Works with shared links or product descriptions', 'Kuwait-specific decision format'],
-    cons: ['Live price comparison is still best-effort from public pages', 'Instagram video extraction needs a native app or approved scraping or API flow'],
-    redFlags: ['Do not trust influencer claims without independent review data', 'Check warranty and return policy before buying'],
-    kuwaitNotes: ['Compare with Xcite, Eureka, Blink, Best Al Yousifi, Lulu, Carrefour, and Amazon UAE where relevant', 'Check whether warranty is Kuwait-local or international only'],
-    betterAlternatives: ['Compare across Kuwait retailers before buying', 'Wait for clearer pricing or verified seller information'],
+      'Demo mode is active. Add an OpenAI or DeepSeek key to enable live AI search planning. The comparison layer still tries to surface Kuwait stores and likely cheaper options.',
+    pros: ['Fast check flow', 'Works with shared links or product descriptions', 'Kuwait-first comparison by default'],
+    cons: ['Live store discovery is still best-effort from public pages', 'Some merchants block search-engine discovery'],
+    redFlags: ['Check warranty and return policy before buying', 'Treat missing matches as a search limitation, not proof the product is unavailable'],
+    kuwaitNotes: ['Compare Xcite, Eureka, Blink, Best Al Yousifi, Lulu, Carrefour, and Amazon UAE where relevant', 'Use Middle East or worldwide scope when Kuwait listings are thin'],
+    betterAlternatives: ['Compare across Kuwait retailers before buying', 'Try broader search terms or widen the market scope'],
     comparison,
+    searchPlan,
     demoMode: true,
     providerLabel: 'demo mode'
   }
@@ -170,7 +165,7 @@ async function generateSearchPlan(input: string): Promise<SearchPlan> {
     }
   }
 
-  const prompt = `You are BuyWise Kuwait. Build a smart search plan from this input so a shopping comparison engine can find real product listings.
+  const prompt = `You are BuyWise Kuwait. Build a smart search plan from this input so a shopping comparison engine can find real product listings and compare prices.
 
 Input:
 ${clean}
@@ -185,7 +180,7 @@ Return ONLY valid JSON with these exact keys:
 Rules:
 - canonicalName should be the real product name, not the shorthand.
 - searchQueries should contain 4 to 6 concise phrases, from most specific to broader.
-- Include the exact product name, a Kuwait price phrase, a store-friendly version, and a broader family phrase when useful.
+- Include the exact product name, a Kuwait price phrase, a store-friendly version, a broader family phrase, and at least one retailer-friendly phrase when useful.
 - For phones and electronics, include capacity or model-year variants if they are obvious from the input.
 - excludedTerms should list obvious false matches to avoid.
 - notes should briefly explain the interpretation.
@@ -235,6 +230,7 @@ Keep it concise, practical, and shopper-friendly.`
 export async function POST(req: NextRequest) {
   let requestInput = ''
   let scope: MarketScope = 'kuwait'
+  let plan: SearchPlan | undefined
   try {
     const body = await req.json()
     const { input, marketScope } = body as { input?: unknown; marketScope?: unknown }
@@ -245,12 +241,12 @@ export async function POST(req: NextRequest) {
     requestInput = input
     scope = normalizeScope(marketScope)
 
-    const plan = await generateSearchPlan(input)
+    plan = await generateSearchPlan(input)
     const comparison = await buildComparison(input, plan.canonicalName, scope, plan.searchQueries)
     const activeProvider = getAvailableProvider(getProvider())
 
     if (!activeProvider) {
-      return NextResponse.json(fallback(plan.canonicalName || input, comparison))
+      return NextResponse.json(fallback(plan.canonicalName || input, comparison, plan))
     }
 
     const analysisPrompt = buildAnalysisPrompt(plan, input)
@@ -263,6 +259,7 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     const comparison = buildFallbackComparison(requestInput, undefined, scope)
     const message = error instanceof Error ? error.message : 'Server error'
-    return NextResponse.json({ ...fallback(requestInput, comparison), error: message })
+    const fallbackPlan = plan || (requestInput ? await generateSearchPlan(requestInput) : undefined)
+    return NextResponse.json({ ...fallback(requestInput, comparison, fallbackPlan), error: message })
   }
 }
