@@ -6,11 +6,60 @@ type Provider = 'openai' | 'deepseek'
 
 export const runtime = 'nodejs'
 
+const PRODUCT_ALIAS_RULES: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /\bps\s*5\s*pro\b/i, replacement: 'PlayStation 5 Pro' },
+  { pattern: /\bps\s*5\b/i, replacement: 'PlayStation 5' },
+  { pattern: /\bplaystation\s*5\b/i, replacement: 'PlayStation 5' },
+  { pattern: /\biphone\s*16\s*pro\s*max\b/i, replacement: 'iPhone 16 Pro Max' },
+  { pattern: /\biphone\s*16\s*pro\b/i, replacement: 'iPhone 16 Pro' },
+  { pattern: /\biphone\s*16\b/i, replacement: 'iPhone 16' },
+  { pattern: /\biphone\s*15\s*pro\s*max\b/i, replacement: 'iPhone 15 Pro Max' },
+  { pattern: /\biphone\s*15\s*pro\b/i, replacement: 'iPhone 15 Pro' },
+  { pattern: /\biphone\s*15\b/i, replacement: 'iPhone 15' },
+  { pattern: /\bairpods\s*pro\s*2\b/i, replacement: 'AirPods Pro 2' },
+  { pattern: /\bairpods\s*pro\b/i, replacement: 'AirPods Pro' },
+  { pattern: /\bxbox\s*series\s*x\b/i, replacement: 'Xbox Series X' },
+  { pattern: /\bxbox\s*series\s*s\b/i, replacement: 'Xbox Series S' },
+  { pattern: /\bsamsung\s*galaxy\s*s\s*24\b/i, replacement: 'Samsung Galaxy S24' },
+  { pattern: /\bsamsung\s*galaxy\s*s\s*24\s*ultra\b/i, replacement: 'Samsung Galaxy S24 Ultra' },
+  { pattern: /\bsamsung\s*galaxy\s*z\s*fold\s*6\b/i, replacement: 'Samsung Galaxy Z Fold 6' },
+  { pattern: /\bsamsung\s*galaxy\s*z\s*flip\s*6\b/i, replacement: 'Samsung Galaxy Z Flip 6' },
+  { pattern: /\bmacbook\s*air\s*m3\b/i, replacement: 'MacBook Air M3' },
+  { pattern: /\bmacbook\s*pro\s*m3\b/i, replacement: 'MacBook Pro M3' }
+]
+
 function normalizeScope(scope: unknown): MarketScope {
   return scope === 'middle-east' || scope === 'worldwide' ? scope : 'kuwait'
 }
 
-function fallback(input: string, comparison = buildFallbackComparison(input)) : AnalysisResult {
+function normalizeProductInput(input: string) {
+  const trimmed = input.trim()
+  if (!trimmed) return ''
+
+  try {
+    // Keep full URLs intact so the comparison layer can inspect the page directly.
+    new URL(trimmed)
+    return trimmed
+  } catch {
+    // Not a URL, normalize the typed product name.
+  }
+
+  let normalized = trimmed
+    .replace(/[-_/+]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  for (const rule of PRODUCT_ALIAS_RULES) {
+    if (rule.pattern.test(normalized)) {
+      normalized = rule.replacement
+      break
+    }
+  }
+
+  return normalized
+}
+
+function fallback(input: string, comparison = buildFallbackComparison(input)): AnalysisResult {
   return {
     verdict: 'WAIT',
     score: 68,
@@ -42,6 +91,7 @@ function getAvailableProvider(primary: Provider): Provider | null {
 function buildPrompt(input: string) {
   return `You are BuyWise Kuwait, an unbiased shopping decision engine for Kuwait.
 Analyze the shared product description or link.
+First normalize the product into a clear canonical name before judging it. Expand shorthand like "Ps5" into "PlayStation 5" when appropriate.
 Return only valid JSON with these exact keys:
 - verdict: BUY, WAIT, or AVOID
 - score: integer from 0 to 100
@@ -148,6 +198,7 @@ async function callDeepSeek(prompt: string) {
 
 export async function POST(req: NextRequest) {
   let requestInput = ''
+  let normalizedInput = ''
   let scope: MarketScope = 'kuwait'
   try {
     const body = await req.json()
@@ -156,25 +207,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Input is required' }, { status: 400 })
     }
     requestInput = input
+    normalizedInput = normalizeProductInput(input)
     scope = normalizeScope(marketScope)
 
     const primaryProvider = getProvider()
     const activeProvider = getAvailableProvider(primaryProvider)
-    const comparisonPromise = buildComparison(input, undefined, scope)
 
     if (!activeProvider) {
-      const comparison = await comparisonPromise
-      return NextResponse.json(fallback(input, comparison))
+      const comparison = await buildComparison(normalizedInput || input, undefined, scope)
+      return NextResponse.json(fallback(normalizedInput || input, comparison))
     }
 
-    const prompt = buildPrompt(input)
-    const resultPromise = activeProvider === 'deepseek' ? callDeepSeek(prompt) : callOpenAI(prompt)
-    const [result, comparison] = await Promise.all([resultPromise, comparisonPromise])
+    const prompt = buildPrompt(normalizedInput || input)
+    const result = activeProvider === 'deepseek' ? await callDeepSeek(prompt) : await callOpenAI(prompt)
+    const comparison = await buildComparison(normalizedInput || input, result.payload?.productName, scope)
 
     return NextResponse.json({ ...result.payload, comparison, demoMode: false, providerLabel: result.providerLabel })
   } catch (error: unknown) {
-    const comparison = buildFallbackComparison(requestInput, undefined, scope)
+    const comparison = buildFallbackComparison(normalizedInput || requestInput, undefined, scope)
     const message = error instanceof Error ? error.message : 'Server error'
-    return NextResponse.json({ ...fallback(requestInput, comparison), error: message })
+    return NextResponse.json({ ...fallback(normalizedInput || requestInput, comparison), error: message })
   }
 }
