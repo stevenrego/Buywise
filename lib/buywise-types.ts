@@ -9,6 +9,16 @@ export type SearchPlanSummary = {
   searchQueries: string[]
   excludedTerms: string[]
   notes: string[]
+  needsClarification?: boolean
+  clarificationQuestion?: string
+  clarificationOptions?: string[]
+  clarificationReason?: string
+}
+
+export type ClarificationSummary = {
+  question: string
+  options: string[]
+  reason?: string
 }
 
 export type ComparisonOffer = {
@@ -51,6 +61,7 @@ export type AnalysisResult = {
   betterAlternatives: string[]
   comparison?: ComparisonSummary
   searchPlan?: SearchPlanSummary
+  clarification?: ClarificationSummary
   demoMode?: boolean
   providerLabel?: string
   error?: string
