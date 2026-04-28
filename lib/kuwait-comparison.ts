@@ -291,6 +291,23 @@ function buildSearchVariants(input: string, sourceTitle?: string, preferredQueri
   return variants.slice(0, 6)
 }
 
+function buildSearchTerms(retailer: RetailerSource, query: string, searchPlanQueries: string[] = []) {
+  const terms = new Set<string>()
+  const variants = [query, ...searchPlanQueries].filter(Boolean)
+
+  for (const variant of variants) {
+    const trimmed = normalizeSearchFragment(variant)
+    if (!trimmed) continue
+    terms.add(`site:${retailer.domain} ${trimmed}`)
+    terms.add(`${retailer.label} ${trimmed}`)
+    terms.add(`${trimmed} ${retailer.label}`)
+    terms.add(`${trimmed} Kuwait ${retailer.label}`)
+    terms.add(`${trimmed} price Kuwait ${retailer.label}`)
+  }
+
+  return Array.from(terms).slice(0, 10)
+}
+
 function tokenize(value: string) {
   return value
     .toLowerCase()
@@ -495,21 +512,24 @@ function buildOfferNote(title: string, source: string, price: number | null) {
   return `Could not track a clear price on ${source} yet.`
 }
 
-async function lookupRetailerOffer(query: string, retailer: RetailerSource, sourceTitle?: string): Promise<ComparisonOffer> {
-  const variants = buildSearchVariants(query, sourceTitle)
+async function lookupRetailerOffer(query: string, retailer: RetailerSource, sourceTitle?: string, searchPlanQueries: string[] = []): Promise<ComparisonOffer> {
+  const variants = buildSearchVariants(query, sourceTitle, searchPlanQueries)
   const primaryQuery = variants[0]?.query || query
   const searchUrl = searchUrlFor(retailer, primaryQuery)
   const candidateResults: Array<{ result: SearchResult; query: string; score: number }> = []
 
   for (const variant of variants) {
-    const searchResults = await fetchDuckDuckGoResults(`site:${retailer.domain} ${variant.query}`)
-    for (const result of searchResults) {
-      if (!hostFromUrl(result.url).includes(retailer.domain)) continue
-      candidateResults.push({
-        result,
-        query: variant.query,
-        score: scoreSearchResult(result, variant.query, retailer)
-      })
+    for (const searchTerm of buildSearchTerms(retailer, variant.query, searchPlanQueries)) {
+      const searchResults = await fetchDuckDuckGoResults(searchTerm)
+      for (const result of searchResults) {
+        if (!hostFromUrl(result.url).includes(retailer.domain)) continue
+        candidateResults.push({
+          result,
+          query: searchTerm,
+          score: scoreSearchResult(result, variant.query, retailer)
+        })
+      }
+      if (candidateResults.some(candidate => candidate.score >= 12)) break
     }
     if (candidateResults.some(candidate => candidate.score >= 12)) break
   }
@@ -609,7 +629,9 @@ export async function buildComparison(
   const sourcePrice = sourceData.price ?? extractPriceFromText(trimmed)
   const sourceProductName = sourceData.title || sourceTitle || variants[0]?.query || query
 
-  const retailerOffers = await Promise.allSettled(pool.retailers.map(retailer => lookupRetailerOffer(query, retailer, sourceProductName)))
+  const retailerOffers = await Promise.allSettled(
+    pool.retailers.map(retailer => lookupRetailerOffer(query, retailer, sourceProductName, preferredQueries))
+  )
   const offers = retailerOffers.map((result, index) => {
     if (result.status === 'fulfilled') return result.value
     const retailer = pool.retailers[index]
