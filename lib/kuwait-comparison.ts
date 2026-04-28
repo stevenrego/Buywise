@@ -182,7 +182,7 @@ type SearchVariant = {
   label: string
 }
 
-function buildSearchVariants(input: string, sourceTitle?: string): SearchVariant[] {
+function buildSearchVariants(input: string, sourceTitle?: string, preferredQueries: string[] = []): SearchVariant[] {
   const baseQuery = extractSearchQuery(input, sourceTitle)
   const normalizedBase = normalizeSearchFragment(baseQuery)
   const normalizedTitle = normalizeSearchFragment(sourceTitle || '')
@@ -200,6 +200,10 @@ function buildSearchVariants(input: string, sourceTitle?: string): SearchVariant
 
   add(baseQuery, 'base query')
   add(normalizedTitle, 'source title')
+
+  for (const preferred of preferredQueries) {
+    add(preferred, 'ai plan')
+  }
 
   const productHints: Array<{ pattern: RegExp; variants: string[] }> = [
     {
@@ -324,38 +328,6 @@ function scoreSearchResult(result: SearchResult, query: string, retailer: Retail
   return score
 }
 
-function countTokens(value: string) {
-  return value.split(/\s+/).filter(Boolean).length
-}
-
-function isLikelyAlias(value: string) {
-  const tokenCount = countTokens(value)
-  return tokenCount <= 2 && value.length <= 8
-}
-
-function pickBetterQuery(inputCandidate: string, sourceCandidate: string) {
-  if (!inputCandidate) return sourceCandidate
-  if (!sourceCandidate) return inputCandidate
-  if (inputCandidate === sourceCandidate) return inputCandidate
-
-  const inputTokens = countTokens(inputCandidate)
-  const sourceTokens = countTokens(sourceCandidate)
-
-  if (isLikelyAlias(inputCandidate) && sourceCandidate.length >= inputCandidate.length + 4) {
-    return sourceCandidate
-  }
-
-  if (sourceTokens > inputTokens && sourceCandidate.length >= inputCandidate.length) {
-    return sourceCandidate
-  }
-
-  if (sourceCandidate.length >= inputCandidate.length * 1.4 && sourceTokens >= inputTokens + 1) {
-    return sourceCandidate
-  }
-
-  return inputCandidate
-}
-
 function extractSearchQuery(input: string, sourceTitle?: string) {
   const trimmed = input.trim()
   if (!trimmed) return sourceTitle?.trim() || 'product'
@@ -373,7 +345,7 @@ function extractSearchQuery(input: string, sourceTitle?: string) {
 
   const cleanedInput = normalizeSearchFragment(trimmed)
   const cleanedTitle = normalizeSearchFragment(sourceTitle || '')
-  const chosen = pickBetterQuery(cleanedInput, cleanedTitle)
+  const chosen = cleanedInput.length >= cleanedTitle.length ? cleanedInput : cleanedTitle
 
   return chosen || cleanedTitle || cleanedInput || sourceTitle?.trim() || 'product'
 }
@@ -614,10 +586,15 @@ function marketFallbackMessage(scopeLabel: string) {
   return `Couldn't track this one down yet in ${scopeLabel}. Try a cleaner product page or a direct model name.`
 }
 
-export async function buildComparison(input: string, sourceTitle?: string, scope: MarketScope = 'kuwait'): Promise<ComparisonSummary> {
+export async function buildComparison(
+  input: string,
+  sourceTitle?: string,
+  scope: MarketScope = 'kuwait',
+  preferredQueries: string[] = []
+): Promise<ComparisonSummary> {
   const trimmed = input.trim()
   const query = extractSearchQuery(trimmed, sourceTitle)
-  const variants = buildSearchVariants(trimmed, sourceTitle)
+  const variants = buildSearchVariants(trimmed, sourceTitle, preferredQueries)
   const pool = getRetailerPool(scope)
   const sourceUrl = (() => {
     try {
