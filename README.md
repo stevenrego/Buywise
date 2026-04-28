@@ -11,6 +11,7 @@ BuyWise Kuwait is a Kuwait-focused price comparison assistant. Users can search,
 - AI provider support for OpenAI and DeepSeek
 - Demo mode when no API key is configured
 - Best-effort Kuwait retailer comparison against public product pages and search results
+- Market scope selector for Kuwait, Middle East, and worldwide comparisons
 - `/compare?q=<product-url>&market=kuwait|middle-east|worldwide` direct comparison mode
 - Vercel-ready deployment target
 
