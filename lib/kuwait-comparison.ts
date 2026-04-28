@@ -396,7 +396,7 @@ async function fetchDuckDuckGoResults(query: string): Promise<SearchResult[]> {
 
     const html = await response.text()
     const results: SearchResult[] = []
-    const regex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>)?/gi
+    const regex = /<a\b[^>]*class=["'][^"']*\bresult__a\b[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<a\b[^>]*class=["'][^"']*\bresult__snippet\b[^"']*["'][^>]*>([\s\S]*?)<\/a>)?/gi
 
     for (const match of Array.from(html.matchAll(regex))) {
       const href = match[1]
@@ -431,7 +431,7 @@ async function fetchBingResults(query: string): Promise<SearchResult[]> {
 
     const html = await response.text()
     const results: SearchResult[] = []
-    const regex = /<li[^>]+class="b_algo"[\s\S]*?<h2>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<div[^>]+class="b_caption"[\s\S]*?<p>([\s\S]*?)<\/p>)?/gi
+    const regex = /<li\b[^>]*class=["'][^"']*\bb_algo\b[^"']*["'][\s\S]*?<h2>\s*<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<div\b[^>]*class=["'][^"']*\bb_caption\b[^"']*["'][\s\S]*?<p>([\s\S]*?)<\/p>)?/gi
 
     for (const match of Array.from(html.matchAll(regex))) {
       const href = match[1]
