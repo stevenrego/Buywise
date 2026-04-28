@@ -41,6 +41,12 @@ textarea{min-height:140px;resize:vertical}
 .comparison-row-main{min-width:0}
 .comparison-row-price{text-align:right}
 .comparison-link{justify-self:end;white-space:nowrap}
+.scope-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0}
+.scope-chip{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:18px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);cursor:pointer;transition:transform .18s ease,border-color .18s ease,background .18s ease}
+.scope-chip:hover{transform:translateY(-1px);background:rgba(255,255,255,.08)}
+.scope-chip.active{border-color:rgba(134,239,172,.38);background:rgba(134,239,172,.12)}
+.scope-chip span{font-weight:800}
+.scope-chip small{color:var(--muted);font-size:12px;text-align:left}
 .row-head{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px}
 .badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:12px;font-weight:700;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#dbeafe}
 .badge.live,.pill-live{border-color:rgba(134,239,172,.28);background:rgba(134,239,172,.12);color:#d8ffe4}
