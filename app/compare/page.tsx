@@ -1,14 +1,14 @@
-'use client'
-
-import { useSearchParams } from 'next/navigation'
-
 import { BuyWiseApp } from '../../components/BuyWiseApp'
 
 export const dynamic = 'force-dynamic'
 
-export default function ComparePage() {
-  const searchParams = useSearchParams()
-  const rawInput = searchParams.get('q') || searchParams.get('url') || ''
+export default async function ComparePage({
+  searchParams
+}: {
+  searchParams?: Promise<{ q?: string; url?: string }>
+}) {
+  const params = (await searchParams) || {}
+  const rawInput = params.q || params.url || ''
 
   return <BuyWiseApp mode="compare" initialInput={rawInput} autoAnalyze={Boolean(rawInput)} />
 }
