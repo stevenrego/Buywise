@@ -1,19 +1,16 @@
-# BuyWise Kuwait MVP
+# BuyWise Kuwait
 
-BuyWise Kuwait is a Kuwait-focused price comparison assistant. Users can search, paste, or share a product link or description and compare prices across Kuwait stores first, then expand the scope to the Middle East or worldwide. The app still shows a simple `BUY`, `WAIT`, or `AVOID` verdict as a secondary buying signal.
+BuyWise Kuwait is a Kuwait-first product comparison assistant. Users can search, paste, or share a product link and see comparison results across Kuwait stores by default, then widen the scope to the Middle East or worldwide.
 
-## Current MVP
+## What it does
 
-- Next.js App Router app with mobile-first UI
-- Search, paste, and share entry points
-- PWA share-target flow for Android Chrome
-- Saved items page using browser storage
-- AI provider support for OpenAI and DeepSeek
-- Demo mode when no API key is configured
-- Best-effort Kuwait retailer comparison against public product pages and search results
-- Market scope selector for Kuwait, Middle East, and worldwide comparisons
-- `/compare?q=<product-url>&market=kuwait|middle-east|worldwide` direct comparison mode
-- Vercel-ready deployment target
+- Understands shorthand or product links with AI
+- Generates a search plan before comparing prices
+- Compares Kuwait retailers first
+- Lets users switch to Middle East or worldwide scope
+- Shows the cheapest verified option and store links
+- Keeps a simple verdict behind the scenes instead of leading with it
+- Works in demo mode when no API key is configured
 
 ## Environment variables
 
@@ -26,14 +23,6 @@ DEFAULT_AI_PROVIDER=openai
 OPENAI_MODEL=gpt-4.1-mini
 DEEPSEEK_MODEL=deepseek-chat
 ```
-
-Notes:
-
-- `DEFAULT_AI_PROVIDER` supports `openai` or `deepseek`.
-- If the selected provider key is missing, the app automatically falls back to the other configured provider.
-- If no AI key is present, the app still works in demo mode.
-- Price comparison stays best-effort and public-page based so the app can still work without a private merchant API.
-- Kuwait is the default market scope. Users can switch to Middle East or worldwide in the UI or through the `/compare` route query params.
 
 ## Local development
 
@@ -51,30 +40,17 @@ npm run build
 npm run start
 ```
 
-## One-click Vercel deployment
+## Vercel deployment
 
 1. Push this repository to GitHub.
-2. In Vercel, click **Add New Project** and import the GitHub repository.
-3. Add these environment variables in the Vercel project settings:
-   - `OPENAI_API_KEY`
-   - `DEEPSEEK_API_KEY`
-   - `DEFAULT_AI_PROVIDER`
-   - Optional: `OPENAI_MODEL`
-   - Optional: `DEEPSEEK_MODEL`
+2. Import it into Vercel as a Next.js project.
+3. Add `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, and `DEFAULT_AI_PROVIDER`.
 4. Deploy.
-5. Test the home page and `/compare?q=<product-url>&market=kuwait` route.
-6. After the first deployment, open the site on Android Chrome and install it to enable the share-target flow.
+5. Test a product search and the `/compare?q=<product-url>` route.
 
-## Product scope guardrails
+## Guardrails
 
-- Keep the experience focused on product search, sharing, and price comparison.
-- Keep Kuwait as the default market while supporting Middle East and worldwide scopes.
+- Keep the experience focused on product understanding and price comparison.
+- Keep Kuwait as the default market.
 - Do not add wallet, cashback, payment, loyalty, or CAF-related features.
-- Do not commit real secrets or `.env.local`.
-
-## Future roadmap
-
-- Saved products in a hosted database
-- Price alerts
-- Merchant catalog and price history
-- Instagram video save and analysis through approved integrations
+- Do not commit secrets or `.env.local`.
