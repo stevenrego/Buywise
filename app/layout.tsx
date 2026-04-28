@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 
 export const metadata: Metadata = {
   title: 'BuyWise Kuwait',
-  description: 'Share or paste a product link to get a Buy / Wait / Avoid verdict and compare Kuwait prices.',
+  description: 'Share or paste a product link to compare Kuwait prices first, then widen to the Middle East or worldwide.',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, title: 'BuyWise' }
 }
