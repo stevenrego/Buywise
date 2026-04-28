@@ -1,16 +1,29 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bookmark, CircleAlert, Share2, ShieldCheck, ShoppingBag, Sparkles, TrendingDown, ArrowRight } from 'lucide-react'
+import { ArrowRight, Bookmark, CircleAlert, Globe, Search, Share2, ShieldCheck, ShoppingBag, Sparkles, TrendingDown } from 'lucide-react'
 import Link from 'next/link'
 
-import type { AnalysisResult, ComparisonOffer, ComparisonSummary } from '../lib/buywise-types'
+import type { AnalysisResult, ComparisonOffer, ComparisonSummary, MarketScope } from '../lib/buywise-types'
 
 type Props = {
   initialInput?: string
+  initialScope?: MarketScope
   mode?: 'home' | 'compare'
   autoAnalyze?: boolean
 }
+
+type MarketOption = {
+  value: MarketScope
+  label: string
+  helper: string
+}
+
+const MARKET_OPTIONS: MarketOption[] = [
+  { value: 'kuwait', label: 'Kuwait', helper: 'Default market' },
+  { value: 'middle-east', label: 'Middle East', helper: 'GCC and nearby stores' },
+  { value: 'worldwide', label: 'Worldwide', helper: 'Global stores and marketplaces' }
+]
 
 function saveItem(input: string, analysis: AnalysisResult) {
   const current = JSON.parse(localStorage.getItem('buywise_saved') || '[]')
@@ -55,7 +68,9 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
     <section className="card comparison-shell" style={{ marginTop: 16 }}>
       <div className="comparison-header">
         <div>
-          <div className="pill"><TrendingDown size={14} /> Kuwait price comparison</div>
+          <div className="pill">
+            <TrendingDown size={14} /> Kuwait price comparison
+          </div>
           <h2 style={{ marginBottom: 8 }}>{comparison.sourceProductName || 'Tracked product'}</h2>
           <p className="muted" style={{ marginTop: 0 }}>
             {comparison.query}
@@ -81,7 +96,15 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
       ) : null}
 
       <div className="comparison-meta">
-        <span className={`pill ${comparison.trackingStatus === 'live' ? 'pill-live' : comparison.trackingStatus === 'estimated' ? 'pill-estimated' : 'pill-pending'}`}>
+        <span
+          className={`pill ${
+            comparison.trackingStatus === 'live'
+              ? 'pill-live'
+              : comparison.trackingStatus === 'estimated'
+                ? 'pill-estimated'
+                : 'pill-pending'
+          }`}
+        >
           {comparison.trackingStatus === 'live'
             ? 'Live price found'
             : comparison.trackingStatus === 'estimated'
@@ -120,49 +143,51 @@ function ComparisonCard({ comparison }: { comparison: ComparisonSummary }) {
   )
 }
 
-export function BuyWiseApp({ initialInput = '', mode = 'home', autoAnalyze = false }: Props) {
+export function BuyWiseApp({ initialInput = '', initialScope = 'kuwait', mode = 'home', autoAnalyze = false }: Props) {
   const [input, setInput] = useState(initialInput)
+  const [scope, setScope] = useState<MarketScope>(initialScope)
   const [loading, setLoading] = useState(false)
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState('')
   const [statusMessage, setStatusMessage] = useState(
-    mode === 'compare'
-      ? 'Paste a product URL and we will try to compare Kuwait retailers.'
-      : 'Demo mode stays available when no API key is configured.'
+    'Search or share a product, compare Kuwait prices by default, and switch to Middle East or worldwide when needed.'
   )
   const autoRan = useRef(false)
 
-  const analyze = useCallback(async (nextInput = input) => {
-    if (!nextInput.trim()) return
+  const analyze = useCallback(
+    async (nextInput = input, nextScope = scope) => {
+      if (!nextInput.trim()) return
 
-    setError('')
-    setLoading(true)
-    setAnalysis(null)
-    setStatusMessage('Reviewing the product and checking Kuwait price signals...')
+      setError('')
+      setLoading(true)
+      setAnalysis(null)
+      setStatusMessage(`Checking ${MARKET_OPTIONS.find(option => option.value === nextScope)?.label || 'Kuwait'} prices...`)
 
-    try {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: nextInput })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Analysis failed')
+      try {
+        const res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: nextInput, marketScope: nextScope })
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Analysis failed')
 
-      setAnalysis(data)
-      setStatusMessage(
-        data.demoMode
-          ? 'Demo mode result shown because no live AI key is configured.'
-          : `Analysis completed with ${data.providerLabel || 'AI'}. Comparison results are included below.`
-      )
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Analysis failed'
-      setError(message)
-      setStatusMessage('The product could not be analyzed right now.')
-    } finally {
-      setLoading(false)
-    }
-  }, [input])
+        setAnalysis(data)
+        setStatusMessage(
+          data.demoMode
+            ? 'Demo mode result shown because no live AI key is configured.'
+            : `Comparison completed for ${data.comparison?.marketLabel || 'Kuwait'} with ${data.providerLabel || 'AI'}.`
+        )
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Analysis failed'
+        setError(message)
+        setStatusMessage('The product could not be compared right now.')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [input, scope]
+  )
 
   useEffect(() => {
     const pending = localStorage.getItem('buywise_pending_input')
@@ -171,10 +196,10 @@ export function BuyWiseApp({ initialInput = '', mode = 'home', autoAnalyze = fal
       localStorage.removeItem('buywise_pending_input')
       if (autoAnalyze && !autoRan.current) {
         autoRan.current = true
-        void analyze(pending)
+        void analyze(pending, scope)
       }
     }
-  }, [autoAnalyze, analyze])
+  }, [autoAnalyze, analyze, scope])
 
   useEffect(() => {
     if (initialInput) setInput(initialInput)
@@ -183,9 +208,11 @@ export function BuyWiseApp({ initialInput = '', mode = 'home', autoAnalyze = fal
   useEffect(() => {
     if (autoAnalyze && initialInput && !autoRan.current) {
       autoRan.current = true
-      void analyze(initialInput)
+      void analyze(initialInput, scope)
     }
-  }, [autoAnalyze, analyze, initialInput])
+  }, [autoAnalyze, analyze, initialInput, scope])
+
+  const scopeLabel = MARKET_OPTIONS.find(option => option.value === scope)?.label || 'Kuwait'
 
   return (
     <main className="container">
@@ -194,124 +221,164 @@ export function BuyWiseApp({ initialInput = '', mode = 'home', autoAnalyze = fal
           <div className="logo">B</div>
           <div>
             <b>BuyWise Kuwait</b>
-            <div className="muted">Share or paste a product link to get a Buy / Wait / Avoid verdict.</div>
+            <div className="muted">Search, paste, or share a product to compare prices by market.</div>
           </div>
         </div>
         <nav className="nav">
-          <Link href={mode === 'compare' ? '/' : '/compare'}>{mode === 'compare' ? 'Home' : 'Compare'}</Link>
+          <Link href={mode === 'compare' ? '/' : '/compare'}>{mode === 'compare' ? 'Search mode' : 'Compare'}</Link>
           <Link href="/saved">Saved</Link>
         </nav>
       </header>
 
       <section className="hero card" style={{ marginBottom: 16 }}>
-        <div className="pill"><Sparkles size={14} /> Kuwait-first shopping decision assistant</div>
-        <h1>{mode === 'compare' ? 'Compare Kuwait prices before you buy.' : 'Check before you buy.'}</h1>
+        <div className="pill">
+          <Sparkles size={14} /> Price comparison first
+        </div>
+        <h1>{`Compare prices in ${scopeLabel} first.`}</h1>
         <p className="lead">
-          {mode === 'compare'
-            ? 'Paste a product URL and BuyWise will try to pull the current price, compare Kuwait retailers, and highlight the cheapest known option.'
-            : 'Share or paste a product link from Instagram, TikTok, Amazon, Xcite, Blink, Best Al Yousifi, Eureka, Lulu, Carrefour, Namshi, Shein, iHerb, Boutiqaat, and more to get a simple buying verdict.'}
+          Paste a product name, product link, or shared Instagram or Facebook post. BuyWise will compare trusted stores in Kuwait by default,
+          then expand to Middle East or worldwide when you change the market scope.
         </p>
         <div className="notice">
           <ShieldCheck size={18} />
           <span>{statusMessage}</span>
         </div>
-        <textarea value={input} onChange={e => setInput(e.target.value)} placeholder="Paste product link or description here..." />
+
+        <div className="scope-strip" role="tablist" aria-label="Market scope">
+          {MARKET_OPTIONS.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`scope-chip ${scope === option.value ? 'active' : ''}`}
+              onClick={() => setScope(option.value)}
+            >
+              <Globe size={14} />
+              <span>{option.label}</span>
+              <small>{option.helper}</small>
+            </button>
+          ))}
+        </div>
+
+        <textarea
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="Paste a product link, product name, or shared post here..."
+        />
         <div className="row" style={{ marginTop: 12 }}>
           <button className="btn" onClick={() => void analyze()} disabled={loading || !input.trim()}>
-            {loading ? 'Checking...' : 'Analyze'}
+            {loading ? 'Comparing...' : 'Compare prices'}
           </button>
           <Link className="btn secondary" href="/saved">
             <Bookmark size={16} /> Saved items
           </Link>
-          {mode === 'home' ? (
-            <Link className="btn secondary" href="/compare">
-              Compare mode
-            </Link>
-          ) : null}
+          <Link className="btn secondary" href="/share">
+            <Share2 size={16} /> Share input
+          </Link>
         </div>
         {error ? <p className="danger">{error}</p> : null}
       </section>
 
       <section className="grid">
         <div className="card feature">
+          <Search />
+          <h3>Search by product</h3>
+          <p className="muted">Type a model name or paste a store link and compare prices across the selected market.</p>
+        </div>
+        <div className="card feature">
           <Share2 />
-          <h3>Share from anywhere</h3>
-          <p className="muted">Use paste or Android share-target flow for marketplaces, social posts, and shop links.</p>
+          <h3>Share from apps</h3>
+          <p className="muted">Use the share-target flow from Instagram, Facebook, TikTok, or any browser tab that supports sharing.</p>
         </div>
         <div className="card feature">
           <ShoppingBag />
-          <h3>Kuwait-first logic</h3>
-          <p className="muted">Verdicts consider local warranty, delivery quality, returns, seller credibility, and overpricing risk.</p>
-        </div>
-        <div className="card feature">
-          <CircleAlert />
-          <h3>Clear red flags</h3>
-          <p className="muted">Each result highlights hype risk, missing specs, suspicious pricing, and smarter alternatives.</p>
+          <h3>Default Kuwait view</h3>
+          <p className="muted">Kuwait stores are the default, so users see local price differences first before widening the search.</p>
         </div>
       </section>
 
       {analysis ? (
-        <section className="card" style={{ marginTop: 16 }}>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <div>
-              <div className="muted">Verdict</div>
-              <div className={`verdict ${analysis.verdict === 'BUY' ? 'ok' : analysis.verdict === 'WAIT' ? 'warn' : 'danger'}`}>{analysis.verdict}</div>
-            </div>
-            <div>
-              <div className="muted">Score</div>
-              <div className="score">{analysis.score}</div>
-            </div>
-          </div>
-          <h2>{analysis.productName}</h2>
-          <p>{analysis.summary}</p>
-
+        <>
           {analysis.comparison ? <ComparisonCard comparison={analysis.comparison} /> : null}
 
-          <div className="grid" style={{ marginTop: 16 }}>
-            <div>
-              <h3>Pros</h3>
-              <ul className="list">
-                {analysis.pros.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
+          <section className="card" style={{ marginTop: 16 }}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <div>
+                <div className="muted">Comparison status</div>
+                <div
+                  className={`score ${analysis.comparison?.trackingStatus === 'live' ? 'ok' : analysis.comparison?.trackingStatus === 'estimated' ? 'warn' : ''}`}
+                >
+                  {analysis.comparison?.trackingStatus === 'live'
+                    ? 'Live match'
+                    : analysis.comparison?.trackingStatus === 'estimated'
+                      ? 'Best effort'
+                      : 'Still tracking'}
+                </div>
+              </div>
+              <div>
+                <div className="muted">Best known savings</div>
+                <div className="score">{analysis.comparison?.savings ? `${analysis.comparison.savings.toFixed(3)} KD` : 'N/A'}</div>
+              </div>
             </div>
-            <div>
-              <h3>Cons</h3>
-              <ul className="list">
-                {analysis.cons.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h3>Red flags</h3>
-              <ul className="list">
-                {analysis.redFlags.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h3>Kuwait notes</h3>
-              <ul className="list">
-                {analysis.kuwaitNotes.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
+            <h2>{analysis.comparison?.sourceProductName || analysis.productName}</h2>
+            <p>{analysis.comparison?.fallbackMessage || analysis.summary}</p>
 
-          <h3>Better alternatives</h3>
-          <ul className="list">
-            {analysis.betterAlternatives.map((item, index) => (
-              <li key={index}>{item}</li>
-            ))}
-          </ul>
-          <button className="btn" onClick={() => saveItem(input, analysis)}>
-            Save this item
-          </button>
-        </section>
+            <div className="grid" style={{ marginTop: 16 }}>
+              <div>
+                <h3>Cheapest known option</h3>
+                <p className="muted">
+                  {analysis.comparison?.cheapestOffer
+                    ? `${analysis.comparison.cheapestOffer.retailer} at ${formatPrice(analysis.comparison.cheapestOffer.price)}`
+                    : 'No public match yet'}
+                </p>
+              </div>
+              <div>
+                <h3>Scope</h3>
+                <p className="muted">{analysis.comparison?.marketLabel || 'Kuwait'} by default, with wider scope available.</p>
+              </div>
+              <div>
+                <h3>Confidence</h3>
+                <p className="muted">
+                  {analysis.comparison?.trackingStatus === 'live'
+                    ? 'We found live pricing on a public page.'
+                    : analysis.comparison?.trackingStatus === 'estimated'
+                      ? 'We found a likely match, but the page did not expose a clean live price.'
+                      : 'We could not verify a public match yet.'}
+                </p>
+              </div>
+              <div>
+                <h3>What to do next</h3>
+                <p className="muted">Open the cheapest store, compare return policy and warranty, then decide.</p>
+              </div>
+            </div>
+
+            <details style={{ marginTop: 16 }}>
+              <summary className="muted" style={{ cursor: 'pointer' }}>
+                Show AI reasoning
+              </summary>
+              <div className="grid" style={{ marginTop: 16 }}>
+                <div>
+                  <h3>Quick take</h3>
+                  <p className="muted">{analysis.verdict} - Score {analysis.score}</p>
+                </div>
+                <div>
+                  <h3>AI summary</h3>
+                  <p className="muted">{analysis.summary}</p>
+                </div>
+              </div>
+            </details>
+
+            <div className="notice" style={{ marginTop: 12 }}>
+              <CircleAlert size={18} />
+              <span>
+                BuyWise is now centered on price comparison. The verdict is kept as a secondary signal, not the main output.
+              </span>
+            </div>
+
+            <button className="btn" onClick={() => saveItem(input, analysis)}>
+              Save this item
+            </button>
+          </section>
+        </>
       ) : null}
     </main>
   )
