@@ -15,7 +15,7 @@ export default function ShareClient({ shared }: { shared: string }) {
   return <main className="container">
     <div className="card">
       <h1>Shared to BuyWise</h1>
-      <p className="muted">Review the shared content, then compare prices in Kuwait first.</p>
+      <p className="muted">BuyWise will understand the product, then compare prices in Kuwait first.</p>
       <textarea value={value} onChange={e => setValue(e.target.value)} />
       <div className="row" style={{ marginTop: 12 }}>
         <button className="btn" onClick={() => { localStorage.setItem('buywise_pending_input', value); location.href = '/' }}>Compare now</button>
