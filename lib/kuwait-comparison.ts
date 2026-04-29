@@ -431,7 +431,12 @@ async function fetchProductPageData(url: string): Promise<ProductPageData> {
   }
 }
 
-async function callOpenAISearch(prompt: string, schemaName: string, schema: ReturnType<typeof discoverySchema>) {
+async function callOpenAISearch(
+  prompt: string,
+  schemaName: string,
+  schema: ReturnType<typeof discoverySchema>,
+  allowedDomains: string[]
+) {
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -439,7 +444,16 @@ async function callOpenAISearch(prompt: string, schemaName: string, schema: Retu
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_SEARCH_MODEL || 'gpt-4o-mini-search-preview',
+      model: process.env.OPENAI_SEARCH_MODEL || 'gpt-5.4-mini',
+      tools: [
+        {
+          type: 'web_search',
+          filters: {
+            allowed_domains: allowedDomains.slice(0, 20)
+          }
+        }
+      ],
+      tool_choice: 'auto',
       input: prompt,
       text: {
         format: {
@@ -499,7 +513,12 @@ Return JSON with:
 - notes: [string]
 `
 
-  const raw = await callOpenAISearch(prompt, 'buywise_discovery', discoverySchema())
+  const raw = await callOpenAISearch(
+    prompt,
+    'buywise_discovery',
+    discoverySchema(),
+    pool.retailers.map(retailer => retailer.domain)
+  )
   const payload = raw.payload as Partial<DiscoveryResult>
   const matches = Array.isArray(payload.matches) ? payload.matches : []
 
