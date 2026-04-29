@@ -479,13 +479,59 @@ async function callOpenAISearch(
   return { payload: JSON.parse(text), providerLabel: 'OpenAI Search' }
 }
 
+async function discoverRetailerMatchesFromSearch(
+  query: string,
+  sourceTitle: string | undefined,
+  scope: MarketScope,
+  preferredQueries: string[] = []
+): Promise<DiscoveryMatch[]> {
+  const pool = getRetailerPool(scope)
+  const variants = buildSearchVariants(query, sourceTitle, preferredQueries)
+  const matches: DiscoveryMatch[] = []
+
+  for (const retailer of pool.retailers) {
+    let picked: DiscoveryMatch | null = null
+
+    outer: for (const variant of variants) {
+      for (const searchTerm of buildSearchTerms(retailer, variant.query, preferredQueries)) {
+        const searchResults = await fetchSearchResults(searchTerm)
+        const candidate = searchResults
+          .filter(result => hostFromUrl(result.url).includes(retailer.domain))
+          .map(result => ({
+            result,
+            score: scoreSearchResult(result, variant.query, retailer)
+          }))
+          .sort((a, b) => b.score - a.score)[0]
+
+        if (candidate && candidate.score >= 8) {
+          picked = {
+            retailer: retailer.retailer,
+            url: candidate.result.url,
+            pageTitle: candidate.result.title,
+            note: candidate.result.snippet || `Found a likely product page for ${retailer.label}.`,
+            confidence: candidate.score >= 14 ? 'search' : 'estimated'
+          }
+          break outer
+        }
+      }
+    }
+
+    if (picked) matches.push(picked)
+  }
+
+  return matches
+}
+
 async function discoverRetailerMatches(
   query: string,
   sourceTitle: string | undefined,
   scope: MarketScope,
   preferredQueries: string[] = []
 ): Promise<DiscoveryMatch[] | null> {
-  if (!process.env.OPENAI_API_KEY) return null
+  if (!process.env.OPENAI_API_KEY) {
+    const matches = await discoverRetailerMatchesFromSearch(query, sourceTitle, scope, preferredQueries)
+    return matches.length ? matches : null
+  }
 
   const pool = getRetailerPool(scope)
   const prompt = `You are BuyWise Kuwait.
@@ -513,24 +559,33 @@ Return JSON with:
 - notes: [string]
 `
 
-  const raw = await callOpenAISearch(
-    prompt,
-    'buywise_discovery',
-    discoverySchema(),
-    pool.retailers.map(retailer => retailer.domain)
-  )
-  const payload = raw.payload as Partial<DiscoveryResult>
-  const matches = Array.isArray(payload.matches) ? payload.matches : []
+  try {
+    const raw = await callOpenAISearch(
+      prompt,
+      'buywise_discovery',
+      discoverySchema(),
+      pool.retailers.map(retailer => retailer.domain)
+    )
+    const payload = raw.payload as Partial<DiscoveryResult>
+    const matches = Array.isArray(payload.matches) ? payload.matches : []
 
-  return matches
-    .map(match => ({
-      retailer: typeof match.retailer === 'string' ? match.retailer.trim() : '',
-      url: typeof match.url === 'string' && match.url.trim() ? match.url.trim() : null,
-      pageTitle: typeof match.pageTitle === 'string' && match.pageTitle.trim() ? match.pageTitle.trim() : undefined,
-      note: typeof match.note === 'string' && match.note.trim() ? match.note.trim() : undefined,
-      confidence: match.confidence
-    }))
-    .filter(match => match.retailer)
+    const normalized = matches
+      .map(match => ({
+        retailer: typeof match.retailer === 'string' ? match.retailer.trim() : '',
+        url: typeof match.url === 'string' && match.url.trim() ? match.url.trim() : null,
+        pageTitle: typeof match.pageTitle === 'string' && match.pageTitle.trim() ? match.pageTitle.trim() : undefined,
+        note: typeof match.note === 'string' && match.note.trim() ? match.note.trim() : undefined,
+        confidence: match.confidence
+      }))
+      .filter(match => match.retailer)
+
+    if (normalized.length) return normalized
+  } catch {
+    // Fall back to search engine discovery below.
+  }
+
+  const fallbackMatches = await discoverRetailerMatchesFromSearch(query, sourceTitle, scope, preferredQueries)
+  return fallbackMatches.length ? fallbackMatches : null
 }
 
 async function fetchDuckDuckGoResults(query: string): Promise<SearchResult[]> {
