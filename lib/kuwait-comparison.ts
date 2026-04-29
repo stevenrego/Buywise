@@ -19,6 +19,19 @@ type ProductPageData = {
   availability?: 'in stock' | 'out of stock' | 'unknown'
 }
 
+type DiscoveryMatch = {
+  retailer: string
+  url: string | null
+  pageTitle?: string
+  note?: string
+  confidence?: 'live' | 'estimated' | 'search' | 'missing'
+}
+
+type DiscoveryResult = {
+  matches: DiscoveryMatch[]
+  notes?: string[]
+}
+
 const RETAILER_POOLS: Record<MarketScope, { label: string; retailers: RetailerSource[] }> = {
   kuwait: {
     label: 'Kuwait',
@@ -66,7 +79,7 @@ const RETAILER_POOLS: Record<MarketScope, { label: string; retailers: RetailerSo
   }
 }
 
-const PRICE_PATTERN = /(?:KD|KWD|د\.ك\.?)\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)|([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)\s*(?:KD|KWD|د\.ك\.?)/i
+const PRICE_PATTERN = /(?:KD|KWD|Ø¯\.Ùƒ\.?)\s*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)|([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,3})?)\s*(?:KD|KWD|Ø¯\.Ùƒ\.?)/i
 
 const PRODUCT_ALIASES: Array<{ pattern: RegExp; replacement: string }> = [
   { pattern: /\bps\s*5\s*pro\b/i, replacement: 'PlayStation 5 Pro' },
@@ -98,6 +111,35 @@ function getRetailerPool(scope?: MarketScope) {
     scope: normalized,
     label: RETAILER_POOLS[normalized].label,
     retailers: RETAILER_POOLS[normalized].retailers
+  }
+}
+
+function discoverySchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      matches: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            retailer: { type: 'string' },
+            url: { type: ['string', 'null'] },
+            pageTitle: { type: 'string' },
+            note: { type: 'string' },
+            confidence: {
+              type: 'string',
+              enum: ['live', 'estimated', 'search', 'missing']
+            }
+          },
+          required: ['retailer', 'url']
+        }
+      },
+      notes: { type: 'array', items: { type: 'string' } }
+    },
+    required: ['matches']
   }
 }
 
@@ -389,6 +431,89 @@ async function fetchProductPageData(url: string): Promise<ProductPageData> {
   }
 }
 
+async function callOpenAISearch(prompt: string, schemaName: string, schema: ReturnType<typeof discoverySchema>) {
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_SEARCH_MODEL || 'gpt-4o-mini-search-preview',
+      input: prompt,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: schemaName,
+          schema
+        }
+      }
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error(`OpenAI search request failed with status ${response.status}`)
+  }
+
+  const data = await response.json()
+  const output = data.output?.[0]?.content
+  const text = data.output_text || output?.find((item: { type?: string }) => item.type === 'output_text')?.text
+  if (!text) {
+    throw new Error('OpenAI search returned an empty response')
+  }
+
+  return { payload: JSON.parse(text), providerLabel: 'OpenAI Search' }
+}
+
+async function discoverRetailerMatches(
+  query: string,
+  sourceTitle: string | undefined,
+  scope: MarketScope,
+  preferredQueries: string[] = []
+): Promise<DiscoveryMatch[] | null> {
+  if (!process.env.OPENAI_API_KEY) return null
+
+  const pool = getRetailerPool(scope)
+  const prompt = `You are BuyWise Kuwait.
+Use web search to find the best public product page URL for each retailer that likely carries the requested product in the requested market.
+
+Rules:
+- Prefer exact product pages over category pages.
+- Use only URLs you are confident are public and relevant.
+- Do not invent prices.
+- If a retailer has no clear match, return url as null.
+- For Kuwait-first mode, prioritize Kuwaiti retailers and Kuwait-local product pages.
+- If the input is vague, use the provided search plan to narrow it, but still return the most likely store pages if you can.
+
+Product input: ${query}
+Source title: ${sourceTitle || ''}
+Market scope: ${scope}
+Retailers:
+${pool.retailers.map(retailer => `- ${retailer.retailer} (${retailer.domain})`).join('\n')}
+
+Search hints:
+${preferredQueries.length ? preferredQueries.map(item => `- ${item}`).join('\n') : '- none'}
+
+Return JSON with:
+- matches: [{ retailer, url, pageTitle, note, confidence }]
+- notes: [string]
+`
+
+  const raw = await callOpenAISearch(prompt, 'buywise_discovery', discoverySchema())
+  const payload = raw.payload as Partial<DiscoveryResult>
+  const matches = Array.isArray(payload.matches) ? payload.matches : []
+
+  return matches
+    .map(match => ({
+      retailer: typeof match.retailer === 'string' ? match.retailer.trim() : '',
+      url: typeof match.url === 'string' && match.url.trim() ? match.url.trim() : null,
+      pageTitle: typeof match.pageTitle === 'string' && match.pageTitle.trim() ? match.pageTitle.trim() : undefined,
+      note: typeof match.note === 'string' && match.note.trim() ? match.note.trim() : undefined,
+      confidence: match.confidence
+    }))
+    .filter(match => match.retailer)
+}
+
 async function fetchDuckDuckGoResults(query: string): Promise<SearchResult[]> {
   try {
     const response = await fetchTextWithTimeout(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, 6000)
@@ -480,8 +605,28 @@ async function lookupRetailerOffer(
   query: string,
   retailer: RetailerSource,
   sourceTitle?: string,
-  searchPlanQueries: string[] = []
+  searchPlanQueries: string[] = [],
+  discoveredUrl?: string | null
 ): Promise<ComparisonOffer> {
+  if (discoveredUrl) {
+    const pageData = await fetchProductPageData(discoveredUrl)
+    const price = pageData.price ?? extractPriceFromText(`${pageData.title || ''} ${query}`)
+    const confidence: ComparisonConfidence =
+      pageData.price !== null && pageData.price !== undefined ? 'live' : price !== null ? 'estimated' : 'search'
+
+    return {
+      retailer: retailer.retailer,
+      price,
+      currency: 'KD',
+      url: discoveredUrl,
+      searchUrl: `https://www.bing.com/search?q=${encodeURIComponent(`site:${retailer.domain} ${query}`)}`,
+      source: pageData.title || retailer.label,
+      confidence,
+      note: buildOfferNote(pageData.title || retailer.label, retailer.label, price),
+      availability: pageData.availability || 'unknown'
+    }
+  }
+
   const variants = buildSearchVariants(query, sourceTitle, searchPlanQueries)
   const primaryQuery = variants[0]?.query || query
   const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:${retailer.domain} ${primaryQuery}`)}`
@@ -594,9 +739,17 @@ export async function buildComparison(
   const sourceData = sourceUrl ? await fetchProductPageData(sourceUrl) : {}
   const sourcePrice = sourceData.price ?? extractPriceFromText(trimmed)
   const sourceProductName = sourceData.title || sourceTitle || variants[0]?.query || query
+  const discoveredMatches = await discoverRetailerMatches(query, sourceProductName, scope, preferredQueries)
+  const discoveredByRetailer = new Map(
+    (discoveredMatches || [])
+      .filter(match => match.url)
+      .map(match => [match.retailer.toLowerCase(), match.url as string])
+  )
 
   const retailerOffers = await Promise.allSettled(
-    pool.retailers.map(retailer => lookupRetailerOffer(query, retailer, sourceProductName, preferredQueries))
+    pool.retailers.map(retailer =>
+      lookupRetailerOffer(query, retailer, sourceProductName, preferredQueries, discoveredByRetailer.get(retailer.retailer.toLowerCase()))
+    )
   )
 
   const offers = retailerOffers.map((result, index) => {
